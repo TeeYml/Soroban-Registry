@@ -5,7 +5,6 @@ import {
   api,
   ReleaseNotesResponse,
   ReleaseNotesStatus,
-  FunctionChange,
 } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 

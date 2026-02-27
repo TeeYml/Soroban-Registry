@@ -33,8 +33,7 @@ export function useCopy() {
 
       setTimeout(() => setCopied(false), 1800);
       return true;
-    } catch (error) {
-      console.error('Failed to copy text', error);
+    } catch {
 
       // Failure event keeps the same context payload for troubleshooting.
       logEvent(options?.failureEventName || 'code_copy_failed', {

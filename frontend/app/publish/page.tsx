@@ -80,12 +80,7 @@ export default function PublishPage() {
         <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center sm:text-left">Publish Contract</h1>
 
         <form
-          onSubmit={async (e) => {
-            const res = await handleSubmit(e);
-            if (res && typeof res === 'object' && 'success' in res && (res as { success?: boolean }).success) {
-              // noop
-            }
-          }}
+          onSubmit={handleSubmit}
           className="space-y-4 bg-background p-4 sm:p-6 rounded-lg border border-border w-full"
         >
           <FormInput

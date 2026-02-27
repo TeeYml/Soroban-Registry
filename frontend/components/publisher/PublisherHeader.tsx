@@ -1,7 +1,7 @@
 import React from "react";
+import Image from "next/image";
 import { PublisherResponse } from "@/types/publisher";
 import { Calendar, ExternalLink, Github, Globe, CheckCircle } from "lucide-react";
-import Link from "next/link";
 
 interface PublisherHeaderProps {
   publisher: PublisherResponse;
@@ -19,10 +19,13 @@ export function PublisherHeader({ publisher }: PublisherHeaderProps) {
       <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
         {/* Avatar */}
         <div className="relative shrink-0">
-          <img
-            src={publisher.avatarUrl || `https://ui-avatars.com/api/?name=${publisher.displayName}`}
+          <Image
+            src={publisher.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(publisher.displayName)}`}
             alt={publisher.displayName}
+            width={128}
+            height={128}
             className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-gray-100 dark:border-gray-700 object-cover bg-gray-100 dark:bg-gray-800"
+            unoptimized={!publisher.avatarUrl}
           />
         </div>
 

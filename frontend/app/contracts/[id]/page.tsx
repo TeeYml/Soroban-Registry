@@ -29,8 +29,11 @@ import ReleaseNotesPanel from "@/components/ReleaseNotesPanel";
 
 const NETWORKS: Network[] = ["mainnet", "testnet", "futurenet"];
 
-// Mock for maintenance status since it was missing in the original file view but used in code
-const maintenanceStatus = { is_maintenance: false, current_window: null };
+// TODO: Replace with real API call when maintenance endpoint is available
+const maintenanceStatus: { is_maintenance: boolean; current_window: null } = {
+  is_maintenance: false,
+  current_window: null,
+};
 function ContractDetailsContent() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -196,8 +199,8 @@ function ContractDetailsContent() {
           ) : dependencies ? (
             <section>
               <DependencyGraph
-                nodes={[]}
-                edges={[]}
+                nodes={dependencies.nodes ?? []}
+                edges={dependencies.edges ?? []}
               />
             </section>
           ) : null}

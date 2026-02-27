@@ -64,14 +64,14 @@ export default function ExampleCard({ example }: ExampleCardProps) {
   const handleRate = async (val: number) => {
     try {
       setIsRating(true);
-      // Generate a random user ID for demo purposes since we don't have auth yet
-      const userId = localStorage.getItem('user_id') || Math.random().toString(36).substring(7);
+      // TODO: Replace with real auth user ID once authentication is implemented
+      const userId = localStorage.getItem('user_id') || crypto.randomUUID();
       localStorage.setItem('user_id', userId);
       
       await api.rateExample(example.id, userId, val);
       setRating(val);
-    } catch (err) {
-      console.error('Failed to rate example', err);
+    } catch {
+      // Rating failed — silently ignore to avoid disrupting UX
     } finally {
       setIsRating(false);
     }

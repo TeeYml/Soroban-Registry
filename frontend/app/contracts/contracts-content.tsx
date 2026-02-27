@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, ContractSearchParams, Contract } from '@/lib/api';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import ContractCard from '@/components/ContractCard';
 import ContractCardSkeleton from '@/components/ContractCardSkeleton';
 import { ActiveFilters } from '@/components/contracts/ActiveFilters';
@@ -11,8 +12,7 @@ import { ResultsCount } from '@/components/contracts/ResultsCount';
 import { SearchBar } from '@/components/contracts/SearchBar';
 import { SortDropdown, SortBy } from '@/components/contracts/SortDropdown';
 import TagAutocomplete from '@/components/tags/TagAutocomplete';
-import { Tag } from '@/types/tag';
-import { Filter, Package, SlidersHorizontal, X, ArrowUpDown } from 'lucide-react';
+import { Filter, Package, SlidersHorizontal, X } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAnalytics } from '@/hooks/useAnalytics';
 
@@ -40,17 +40,6 @@ function parseCsvOrMulti(values: string[]) {
     .flatMap((value) => value.split(','))
     .map((value) => value.trim())
     .filter(Boolean);
-}
-
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timeout);
-  }, [value, delay]);
-
-  return debounced;
 }
 
 function removeOne<T>(values: T[], value: T) {
@@ -220,7 +209,7 @@ export function ContractsContent() {
   const isEmptyResult = (data?.total ?? 0) === 0;
   const paginationRange = useMemo(
     () => (data ? getPaginationRange(filters.page, data.total_pages) : []),
-    [filters.page, data?.total_pages],
+    [filters.page, data],
   );
 
   useEffect(() => {

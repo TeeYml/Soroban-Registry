@@ -37,7 +37,7 @@ export function PublisherActivityTimeline({ activity }: PublisherActivityTimelin
 
       <div className="relative border-l border-gray-200 dark:border-gray-700 ml-3 space-y-8">
         {sortedActivity.length > 0 ? (
-          sortedActivity.map((event, index) => {
+          sortedActivity.map((event) => {
             let Icon = FileCode;
             let colorClass = "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400";
             let title = "Published Contract";

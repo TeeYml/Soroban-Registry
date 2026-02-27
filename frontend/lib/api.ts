@@ -1,12 +1,11 @@
 // Mock data: conditionally imported only in development/test.
 // In production (NEXT_PUBLIC_USE_MOCKS !== "true"), these are empty stubs
 // that never get reached (gated behind USE_MOCKS checks below).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let MOCK_CONTRACTS: any[] = [];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let MOCK_EXAMPLES: Record<string, any[]> = {};
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let MOCK_VERSIONS: Record<string, any[]> = {};
+// Types are defined later in this file (Contract, ContractExample, ContractVersion),
+// so we use a loosely-typed declaration here and rely on the mock-data module's own types.
+let MOCK_CONTRACTS: Record<string, unknown>[] = [];
+let MOCK_EXAMPLES: Record<string, Record<string, unknown>[]> = {};
+let MOCK_VERSIONS: Record<string, Record<string, unknown>[]> = {};
 if (process.env.NEXT_PUBLIC_USE_MOCKS === "true") {
   // Dynamic require ensures Next.js tree-shakes mock-data from production bundles
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -314,14 +313,14 @@ const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 /**
  * Helper to create a mock response with a delay
  */
-function mockResponse<T>(data: T, delay = 300): Promise<T> {
+function _mockResponse<T>(data: T, delay = 300): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(data), delay));
 }
 
 /**
  * Helper to build query string from params object
  */
-function buildQueryParams(params: Record<string, string | number | boolean | string[] | undefined>): URLSearchParams {
+function _buildQueryParams(params: Record<string, string | number | boolean | string[] | undefined>): URLSearchParams {
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null) continue;
@@ -402,7 +401,7 @@ export const api = {
               (c) =>
                 c.name.toLowerCase().includes(q) ||
                 (c.description && c.description.toLowerCase().includes(q)) ||
-                c.tags.some((tag) => tag.toLowerCase().includes(q)),
+                c.tags.some((tag: string) => tag.toLowerCase().includes(q)),
             );
           }
 
@@ -434,7 +433,7 @@ export const api = {
           if (languages.length > 0) {
             const normalized = languages.map((language) => language.toLowerCase());
             filtered = filtered.filter((c) =>
-              c.tags.some((tag) => normalized.includes(tag.toLowerCase())),
+              c.tags.some((tag: string) => normalized.includes(tag.toLowerCase())),
             );
           }
 
@@ -511,7 +510,7 @@ export const api = {
       const backendSortBy =
         params.sort_by === 'created_at' ? 'createdat'
         : params.sort_by === 'updated_at' ? 'updatedat'
-        : params.sort_by === 'name' ? 'createdat'
+        : params.sort_by === 'name' ? 'name'
         : params.sort_by === 'downloads' ? 'interactions'
         : params.sort_by;
       queryParams.append("sort_by", backendSortBy);
@@ -521,16 +520,13 @@ export const api = {
     if (params?.page_size)
       queryParams.append("page_size", String(params.page_size));
 
-    return handleApiCall<PaginatedResponse<Contract>>(
+    const data = await handleApiCall<PaginatedResponse<Contract>>(
       () => fetch(`${API_URL}/api/contracts?${queryParams}`),
       '/api/contracts'
     );
-    const response = await fetch(`${API_URL}/api/contracts?${queryParams}`);
-    if (!response.ok) throw new Error("Failed to fetch contracts");
-    const data = await response.json();
-    // Backend returns "contracts"; normalize to "items" for PaginatedResponse
-    if (Array.isArray(data.contracts) && data.items === undefined) {
-      return { ...data, items: data.contracts };
+    // Backend may return "contracts" instead of "items" — normalize for PaginatedResponse
+    if (Array.isArray((data as Record<string, unknown>).contracts) && data.items === undefined) {
+      return { ...data, items: (data as Record<string, unknown>).contracts as Contract[] };
     }
     return data;
   },

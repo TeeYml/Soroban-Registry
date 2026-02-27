@@ -1,5 +1,42 @@
 import { PublisherResponse, ContractSummary, ActivityEvent } from "@/types/publisher";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
+
+// ---------------------------------------------------------------------------
+// Real API call (primary path)
+// ---------------------------------------------------------------------------
+
+export async function getPublisher(address: string): Promise<PublisherResponse> {
+  if (!USE_MOCKS) {
+    const res = await fetch(`${API_URL}/api/publishers/${encodeURIComponent(address)}`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch publisher: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mock fallback (development only, gated behind NEXT_PUBLIC_USE_MOCKS)
+  // ---------------------------------------------------------------------------
+  await new Promise((resolve) => setTimeout(resolve, 800));
+
+  const contracts = generateMockContracts(18);
+  const activity = generateMockActivity(12);
+
+  return {
+    ...MOCK_PUBLISHER,
+    address: address,
+    avatarUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${address}`,
+    contracts,
+    activity,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Mock data generators (only used when USE_MOCKS === true)
+// ---------------------------------------------------------------------------
+
 // Mock data generator helper
 const generateMockContracts = (count: number): ContractSummary[] => {
   return Array.from({ length: count }).map((_, i) => {
@@ -20,7 +57,7 @@ const generateMockContracts = (count: number): ContractSummary[] => {
 };
 
 const generateMockActivity = (count: number): ActivityEvent[] => {
-  return Array.from({ length: count }).map((_, i) => {
+  return Array.from({ length: count }).map(() => {
     const typeRand = Math.random();
     let type: "verification_success" | "verification_failed" | "contract_published" = "contract_published";
     if (typeRand > 0.6) type = "verification_success";
@@ -47,20 +84,3 @@ const MOCK_PUBLISHER: Omit<PublisherResponse, 'contracts' | 'activity'> = {
   totalContracts: 18,
   createdAt: "2023-09-15T10:00:00Z",
 };
-
-export async function getPublisher(address: string): Promise<PublisherResponse> {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 800));
-
-  const contracts = generateMockContracts(18);
-  const activity = generateMockActivity(12);
-
-  // Return mock data with the requested address
-  return {
-    ...MOCK_PUBLISHER,
-    address: address,
-    avatarUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${address}`,
-    contracts,
-    activity,
-  };
-}

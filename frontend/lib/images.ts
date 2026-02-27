@@ -1,4 +1,4 @@
-import { decode, encode } from 'blurhash';
+import { decode } from 'blurhash';
 
 /**
  * Image utility functions and constants for optimized image rendering
@@ -126,22 +126,6 @@ export interface BlurHashDecodeOptions {
   fallbackColor?: string;
 }
 
-export interface BlurHashUploadMetadata {
-  blurHash: string;
-  width: number;
-  height: number;
-  placeholderColor: string;
-}
-
-export interface PlaceholderBenchmarkResult {
-  iterations: number;
-  solidColorTotalMs: number;
-  solidColorAvgMs: number;
-  blurHashTotalMs?: number;
-  blurHashAvgMs?: number;
-  usedBlurHash: boolean;
-}
-
 function canUseCanvas(): boolean {
   return typeof document !== 'undefined';
 }
@@ -196,40 +180,6 @@ function averageColorFromRgba(pixels: Uint8ClampedArray): string {
   return `#${[rr, gg, bb].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function nowMs(): number {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now();
-}
-
-function loadImageFromFile(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Failed to decode image file'));
-    };
-
-    img.src = url;
-  });
-}
-
-function getScaledDimensions(width: number, height: number, maxDimension: number): { width: number; height: number } {
-  if (width <= 0 || height <= 0) {
-    return { width: 1, height: 1 };
-  }
-
-  const scale = Math.min(1, maxDimension / Math.max(width, height));
-  return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
-  };
-}
-
 /**
  * Decodes a blurhash into a PNG data URL for `next/image` blur placeholders.
  * Falls back to a solid-color SVG if decoding/canvas is unavailable.
@@ -256,103 +206,6 @@ export function generateBlurHashPlaceholder(
   } catch {
     return generateSolidPlaceholder(fallbackColor);
   }
-}
-
-/**
- * Generates blurhash + fallback color metadata for an uploaded image file.
- * Intended to be called during image upload before sending metadata to the API.
- */
-export async function generateBlurHashUploadMetadata(
-  file: File,
-  options: {
-    maxDimension?: number;
-    componentX?: number;
-    componentY?: number;
-  } = {}
-): Promise<BlurHashUploadMetadata> {
-  if (!canUseCanvas()) {
-    throw new Error('Blurhash generation requires a browser environment');
-  }
-
-  const { maxDimension = 64, componentX = 4, componentY = 4 } = options;
-  const img = await loadImageFromFile(file);
-  const sourceWidth = img.naturalWidth || img.width;
-  const sourceHeight = img.naturalHeight || img.height;
-  const scaled = getScaledDimensions(sourceWidth, sourceHeight, maxDimension);
-
-  const canvas = createCanvas(scaled.width, scaled.height);
-  if (!canvas) {
-    throw new Error('Canvas unavailable for blurhash generation');
-  }
-
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) {
-    throw new Error('Unable to create canvas context for blurhash generation');
-  }
-
-  ctx.drawImage(img, 0, 0, scaled.width, scaled.height);
-  const imageData = ctx.getImageData(0, 0, scaled.width, scaled.height);
-  const blurHash = encode(imageData.data, scaled.width, scaled.height, componentX, componentY);
-
-  return {
-    blurHash,
-    width: sourceWidth,
-    height: sourceHeight,
-    placeholderColor: averageColorFromRgba(imageData.data),
-  };
-}
-
-/**
- * Compares placeholder generation overhead for solid-color SVG vs blurhash decode.
- * Useful for ad-hoc benchmarking in the browser console or upload flows.
- */
-export function benchmarkPlaceholderGeneration(
-  options: {
-    iterations?: number;
-    blurHash?: string | null;
-    fallbackColor?: string;
-    decodeWidth?: number;
-    decodeHeight?: number;
-  } = {}
-): PlaceholderBenchmarkResult {
-  const {
-    iterations = 50,
-    blurHash,
-    fallbackColor = '#e5e7eb',
-    decodeWidth = 32,
-    decodeHeight = 32,
-  } = options;
-
-  const solidStart = nowMs();
-  for (let i = 0; i < iterations; i += 1) {
-    generateSolidPlaceholder(fallbackColor);
-  }
-  const solidColorTotalMs = nowMs() - solidStart;
-
-  let blurHashTotalMs: number | undefined;
-  let usedBlurHash = false;
-
-  if (blurHash) {
-    usedBlurHash = true;
-    const blurStart = nowMs();
-    for (let i = 0; i < iterations; i += 1) {
-      generateBlurHashPlaceholder(blurHash, {
-        width: decodeWidth,
-        height: decodeHeight,
-        fallbackColor,
-      });
-    }
-    blurHashTotalMs = nowMs() - blurStart;
-  }
-
-  return {
-    iterations,
-    solidColorTotalMs,
-    solidColorAvgMs: solidColorTotalMs / iterations,
-    blurHashTotalMs,
-    blurHashAvgMs: blurHashTotalMs !== undefined ? blurHashTotalMs / iterations : undefined,
-    usedBlurHash,
-  };
 }
 
 /**

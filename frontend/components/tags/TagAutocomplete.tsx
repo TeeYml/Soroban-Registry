@@ -58,7 +58,7 @@ export default function TagAutocomplete({
         const tags = await getTags(normalizedQuery);
         setResults(tags);
         setIsOpen(true);
-      } catch (error) {
+      } catch (_error) {
         setResults([]);
       } finally {
         setLoading(false);
@@ -85,7 +85,7 @@ export default function TagAutocomplete({
     setResults([]);
     setIsOpen(false);
     setHasSearched(false);
-    onClear && onClear();
+    if (onClear) onClear();
     inputRef.current?.focus();
   };
 
@@ -153,6 +153,7 @@ export default function TagAutocomplete({
                 key={tag.id}
                 className="cursor-pointer select-none relative py-2 pl-3 pr-4 hover:bg-gray-100 text-gray-900 group"
                 role="option"
+                aria-selected={false}
                 onClick={() => handleSelect(tag)}
               >
                 <div className="flex justify-between items-center">

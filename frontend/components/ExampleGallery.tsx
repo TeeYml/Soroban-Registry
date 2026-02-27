@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import ExampleCard from './ExampleCard';
 import ExampleCardSkeleton from './ExampleCardSkeleton';
 import { AlertCircle, Terminal, Search } from 'lucide-react';
 import { useAnalytics } from '@/hooks/useAnalytics';
-import { useEffect } from 'react';
 
 interface ExampleGalleryProps {
   contractId: string;

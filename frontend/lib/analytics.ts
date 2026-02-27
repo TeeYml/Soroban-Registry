@@ -32,8 +32,10 @@ export const initAnalytics = () => {
       // Wait for GA script to fully load before calling config
       script.onload = () => {
         if (window.gtag) {
-          window.gtag('config', process.env.NEXT_PUBLIC_GA_ID, { anonymize_ip: true, debug_mode: true })
-          console.log('GA initialized')
+          window.gtag('config', process.env.NEXT_PUBLIC_GA_ID, {
+            anonymize_ip: true,
+            ...(process.env.NODE_ENV !== 'production' && { debug_mode: true }),
+          })
         }
       }
     }
@@ -71,7 +73,6 @@ export const initAnalytics = () => {
 export const trackEvent = (name: string, params?: Record<string, unknown>) => {
   if (provider === 'ga' && window.gtag) {
     window.gtag('event', name, params)
-    console.log(`GA event tracked: ${name}`, params)
   }
   if (provider === 'plausible' && window.plausible) window.plausible(name, params)
   if (provider === 'mixpanel' && window.mixpanel) window.mixpanel.track(name, params)

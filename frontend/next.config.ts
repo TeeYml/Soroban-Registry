@@ -1,4 +1,3 @@
-import path from "path";
 import type { NextConfig } from "next";
 
 const apiOrigin = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -44,6 +43,11 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'arweave.net',
         pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'ui-avatars.com',
+        pathname: '/api/**',
       },
     ],
     // Define device sizes for responsive images

@@ -31,10 +31,12 @@ export function useStats(period: TimePeriod): UseStatsReturn {
     loadData();
 
     const intervalId = setInterval(() => {
+      // Skip polling when the tab is not visible
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       // Background refresh without setting loading state
       fetchStats(period)
         .then(setData)
-        .catch((err) => console.error('Polling error:', err));
+        .catch(() => { /* swallow polling errors silently */ });
     }, 30000);
 
     return () => clearInterval(intervalId);

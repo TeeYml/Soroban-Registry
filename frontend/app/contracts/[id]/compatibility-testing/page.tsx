@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import CompatibilityTestingMatrix from '@/components/CompatibilityTestingMatrix';
-import { ArrowLeft, FlaskConical, Loader2 } from 'lucide-react';
+import { ArrowLeft, FlaskConical } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 
 export default function CompatibilityTestingPage() {

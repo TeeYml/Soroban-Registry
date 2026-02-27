@@ -45,7 +45,7 @@ export default function Navbar() {
                                     <div className="bg-background rounded-md shadow-lg border border-border overflow-hidden">
                                         <div className="py-1">
                                             <Link
-                                                href="/publishers/GBSX...2J4K"
+                                                href="/publishers"
                                                 className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                                             >
                                                 <Users className="w-4 h-4" />

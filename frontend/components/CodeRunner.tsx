@@ -2,7 +2,6 @@
 'use client';
 
 import { useState } from 'react';
-import * as StellarSdk from '@stellar/stellar-sdk';
 import CodeCopyButton from './CodeCopyButton';
 import { useCopy } from '@/hooks/useCopy';
 
@@ -49,41 +48,56 @@ export default function CodeRunner({
     setOutput('');
 
     try {
-      // Capture console.log
-      const logs: string[] = [];
-      const originalLog = console.log;
-      const originalError = console.error;
+      // Execute user code in a sandboxed iframe to prevent XSS and DOM access.
+      // The iframe has no access to the parent page's cookies, DOM, or scripts.
+      const result = await new Promise<string>((resolve, reject) => {
+        const iframe = document.createElement('iframe');
+        iframe.sandbox.add('allow-scripts');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
 
-      console.log = (...args) => {
-        logs.push(args.map(a => String(a)).join(' '));
-        originalLog(...args);
-      };
+        const timeout = setTimeout(() => {
+          document.body.removeChild(iframe);
+          reject(new Error('Execution timed out (10s)'));
+        }, 10_000);
 
-      console.error = (...args) => {
-        logs.push(`ERROR: ${args.map(a => String(a)).join(' ')}`);
-        originalError(...args);
-      };
-
-      // Create a secure context for execution
-      // Note: This is a basic implementation. For production, consider using a sandboxed iframe or worker.
-      // We expose StellarSdk to the code.
-      const func = new Function('StellarSdk', 'console', `
-        return (async () => {
-          try {
-            ${code}
-          } catch (e) {
-            console.error(e);
+        const handler = (event: MessageEvent) => {
+          if (event.source !== iframe.contentWindow) return;
+          clearTimeout(timeout);
+          window.removeEventListener('message', handler);
+          document.body.removeChild(iframe);
+          if (event.data?.error) {
+            reject(new Error(event.data.error));
+          } else {
+            resolve(event.data?.logs?.join('\n') || 'Code executed successfully (no output).');
           }
-        })();
-      `);
+        };
 
-      await func(StellarSdk, console);
+        window.addEventListener('message', handler);
 
-      // Restore console
-      console.log = originalLog;
-      console.error = originalError;
+        const scriptContent = `
+          <script>
+            (async () => {
+              const logs = [];
+              const console = {
+                log: (...args) => logs.push(args.map(String).join(' ')),
+                error: (...args) => logs.push('ERROR: ' + args.map(String).join(' ')),
+                warn: (...args) => logs.push('WARN: ' + args.map(String).join(' ')),
+              };
+              try {
+                ${code}
+              } catch (e) {
+                console.error(e?.message || e);
+              }
+              parent.postMessage({ logs }, '*');
+            })().catch(e => parent.postMessage({ error: e?.message || String(e) }, '*'));
+          <\/script>
+        `;
 
-      setOutput(logs.join('\n') || 'Code executed successfully (no output).');
+        iframe.srcdoc = scriptContent;
+      });
+
+      setOutput(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setOutput(`Execution Error: ${message}`);
@@ -113,6 +127,7 @@ export default function CodeRunner({
           </div>
         </div>
         <textarea
+          aria-label="Code editor"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           className="w-full h-64 p-4 font-mono text-sm bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none resize-none"

@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { ContractSummary } from "@/types/publisher";
-import { Tag } from "@/types/tag";
-import TagAutocomplete from "@/components/tags/TagAutocomplete";
 import { Search, Filter, ArrowUpRight } from "lucide-react";
 import { VerificationBadge } from "./VerificationBadge";
 import Link from "next/link";
