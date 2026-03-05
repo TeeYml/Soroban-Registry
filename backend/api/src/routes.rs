@@ -1,7 +1,7 @@
 #[cfg(feature = "openapi")]
 use crate::openapi;
 use crate::{
-    ab_test_handlers, activity_feed_handlers, auth, auth_handlers, batch_verify_handlers,
+    ab_test_handlers, auth, auth_handlers, batch_verify_handlers,
     breaking_changes, canary_handlers, compatibility_testing_handlers, custom_metrics_handlers,
     deprecation_handlers, handlers, metrics_handler, migration_handlers, performance_handlers,
     resource_handlers, simulation_handlers, state::AppState,

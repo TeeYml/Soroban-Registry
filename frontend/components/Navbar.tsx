@@ -3,19 +3,18 @@
 import { Package, GitBranch, ChevronDown, BarChart2, Users, Menu, X, Layers, Search, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import ThemeToggle from './ThemeToggle';
 
 export default function Navbar() {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [menuOpenForPath, setMenuOpenForPath] = useState<string | null>(null);
     const dropdownTimeout = useRef<NodeJS.Timeout | null>(null);
     const pathname = usePathname();
 
-    // Close mobile menu on route change
-    useEffect(() => {
-        setMobileMenuOpen(false);
-    }, [pathname]);
+    // Derive mobileMenuOpen: auto-closes when pathname changes
+    const mobileMenuOpen = menuOpenForPath === pathname;
+    const setMobileMenuOpen = (open: boolean) => setMenuOpenForPath(open ? pathname : null);
 
     const isActive = (href: string) => pathname === href;
     const isExploreActive = ['/publishers', '/stats', '/templates'].some(p => pathname.startsWith(p));
