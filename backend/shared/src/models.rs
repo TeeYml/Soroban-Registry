@@ -792,3 +792,27 @@ impl std::fmt::Display for DeploymentEnvironment {
          }
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADVANCED CONTRACT DEPENDENCIES (issue #417)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependencyNode {
+    pub contract_id: String,
+    pub resolved_id: Option<Uuid>,
+    pub name: Option<String>,
+    pub call_volume: i32,
+    pub status: String,
+    pub is_circular: bool,
+    pub dependencies: Vec<DependencyNode>,
+    pub visualization_hints: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependencyResponse {
+    pub root: DependencyNode,
+    pub total_dependencies: usize,
+    pub max_depth: usize,
+    pub has_circular: bool,
+}

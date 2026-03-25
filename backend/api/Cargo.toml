@@ -30,3 +30,4 @@ moka = { version = "0.12.13", features = ["future"] }
 async-trait = "0.1.89"
 lru = "0.16.3"
 rand = "0.8"
+async-recursion = "1.1.1"

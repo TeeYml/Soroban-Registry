@@ -11,6 +11,7 @@ mod checklist;
 mod detector;
 mod error;
 mod handlers;
+mod dependency_handlers;
 mod multisig_handlers;
 mod multisig_routes;
 mod models;
