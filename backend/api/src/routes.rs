@@ -2,13 +2,13 @@
 use crate::openapi;
 use crate::{
     ab_test_handlers, auth, auth_handlers, batch_verify_handlers, breaking_changes,
-    canary_handlers, compatibility_testing_handlers, custom_metrics_handlers, deprecation_handlers,
-    handlers, metrics_handler, migration_handlers, performance_handlers, resource_handlers,
-    simulation_handlers, state::AppState,
+    canary_handlers, category_handlers, compatibility_testing_handlers, custom_metrics_handlers,
+    deprecation_handlers, handlers, metrics_handler, migration_handlers, performance_handlers,
+    resource_handlers, simulation_handlers, state::AppState,
 };
 use axum::{
     middleware,
-    routing::{get, patch, post},
+    routing::{get, patch, post, put},
     Router,
 };
 #[cfg(feature = "openapi")]
@@ -357,5 +357,20 @@ pub fn admin_routes() -> Router<AppState> {
     Router::new()
         .route("/api/admin/audit-logs", get(handlers::get_all_audit_logs))
         .merge(migration_routes())
+        // Category management (issue #414) – admin-only write endpoints
+        .route(
+            "/api/admin/categories",
+            post(category_handlers::create_category),
+        )
+        .route(
+            "/api/admin/categories/:id",
+            put(category_handlers::update_category)
+                .delete(category_handlers::delete_category),
+        )
         .route_layer(middleware::from_fn(auth::require_admin))
+}
+
+/// Public read-only category endpoints (no authentication required).
+pub fn category_routes() -> Router<AppState> {
+    Router::new().route("/api/categories", get(category_handlers::list_categories))
 }

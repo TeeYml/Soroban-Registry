@@ -14,6 +14,7 @@ mod db_monitoring;
 
 mod activity_feed_handlers;
 mod activity_feed_routes;
+mod category_handlers;
 mod custom_metrics_handlers;
 mod dependency;
 mod deprecation_handlers;
@@ -214,6 +215,7 @@ async fn main() -> Result<()> {
         .merge(routes::openapi_routes())
         .merge(routes::health_monitor_routes())
         .merge(routes::admin_routes())
+        .merge(routes::category_routes())
         .merge(routes::compatibility_dashboard_routes())
         .merge(routes::canary_routes())
         .merge(routes::ab_test_routes())

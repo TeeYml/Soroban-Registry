@@ -39,7 +39,13 @@ const MAX_TAG_LENGTH: usize = 50;
 const MAX_SOURCE_CODE_BYTES: usize = 1024 * 1024;
 /// Maximum JSON nesting depth
 const MAX_JSON_DEPTH: usize = 10;
-/// Allowed categories for contracts
+/// Allowed categories for contracts.
+///
+/// TODO(issue #414): Replace this static whitelist with a live database lookup
+/// against the `contract_categories` table once the category management system
+/// is fully integrated.  The seeded default categories below match the rows
+/// inserted by migration 051_contract_categories.sql, so existing contract data
+/// continues to validate correctly in the meantime.
 const ALLOWED_CATEGORIES: &[&str] = &["DEX", "Lending", "Bridge", "Oracle", "Token", "Other"];
 /// Maximum length for dependency name
 const MAX_DEPENDENCY_NAME_LENGTH: usize = 255;
