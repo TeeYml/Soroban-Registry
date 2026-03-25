@@ -1123,9 +1123,6 @@ pub async fn publish_contract(
     headers: HeaderMap,
     ValidatedJson(req): ValidatedJson<PublishRequest>,
 ) -> ApiResult<Json<Contract>> {
-    crate::validation::validate_contract_id(&req.contract_id)
-        .map_err(|e| ApiError::bad_request("InvalidContractId", e))?;
-
     let publisher: Publisher = sqlx::query_as(
         "INSERT INTO publishers (stellar_address) VALUES ($1)
          ON CONFLICT (stellar_address) DO UPDATE SET stellar_address = EXCLUDED.stellar_address
