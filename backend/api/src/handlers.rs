@@ -60,7 +60,9 @@ fn map_query_rejection(err: QueryRejection) -> ApiError {
     )
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, sqlx::Type, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "contract_audit_event_type", rename_all = "snake_case")]
 #[allow(dead_code)]
 pub enum ContractAuditEventType {
@@ -71,7 +73,14 @@ pub enum ContractAuditEventType {
     PublisherChanged,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    sqlx::FromRow,
+    utoipa::ToSchema,
+)]
 #[allow(dead_code)]
 pub struct ContractAuditLogEntry {
     pub id: Uuid,
