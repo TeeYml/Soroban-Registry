@@ -1,4 +1,4 @@
-﻿pub mod migrations;
+pub mod migrations;
 
 use axum::{
     extract::{
@@ -361,31 +361,101 @@ pub async fn verify_contract(
 ) -> ApiResult<Json<serde_json::Value>> {
     let Json(req) = payload.map_err(map_json_rejection)?;
 
-    // TODO: Implement full verification logic
+    let contract_id = Uuid::parse_str(&req.contract_id).map_err(|_| {
+        ApiError::bad_request("InvalidContractId", "Invalid contract ID format".to_string())
+    })?;
 
-    // Fire-and-forget analytics event
-    // We parse the contract_id string as UUID for the event; if it fails we skip.
-    if let Ok(cid) = Uuid::parse_str(&req.contract_id) {
-        let pool = state.db.clone();
-        tokio::spawn(async move {
-            if let Err(err) = analytics::record_event(
-                &pool,
-                AnalyticsEventType::ContractVerified,
-                cid,
-                None,
-                None,
-                Some(serde_json::json!({ "compiler_version": req.compiler_version })),
-            )
-            .await
-            {
-                tracing::warn!(error = ?err, "failed to record contract_verified event");
+    // Check if contract exists and get deployed wasm hash
+    let contract: Contract = sqlx::query_as("SELECT * FROM contracts WHERE id = $1")
+        .bind(contract_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|err| db_internal_error("get contract for verification", err))?
+        .ok_or_else(|| ApiError::not_found("ContractNotFound", "Contract not found"))?;
+
+    let pool = state.db.clone();
+    let req_clone = req.clone();
+
+    // Verify in background
+    tokio::spawn(async move {
+        // Create pending verification record
+        let verification_id: Uuid = match sqlx::query_scalar(
+            "INSERT INTO verifications (contract_id, status, source_code, build_params, compiler_version) 
+             VALUES ($1, 'pending', $2, $3, $4) RETURNING id"
+        )
+        .bind(contract_id)
+        .bind(&req_clone.source_code)
+        .bind(&req_clone.build_params)
+        .bind(&req_clone.compiler_version)
+        .fetch_one(&pool)
+        .await {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!(error = ?e, "Failed to create pending verification record");
+                return;
             }
-        });
-    }
+        };
+
+        match verifier::verify_contract(
+            &req_clone.source_code,
+            &req_clone.compiler_version,
+            &req_clone.build_params,
+            &contract.wasm_hash,
+        ).await {
+            Ok(output) => {
+                let status = if output.is_verified { "verified" } else { "failed" };
+                let verified_at = if output.is_verified { Some(chrono::Utc::now()) } else { None };
+
+                if let Err(e) = sqlx::query(
+                    "UPDATE verifications SET status = $1, error_message = $2, verified_at = $3 WHERE id = $4"
+                )
+                .bind(status)
+                .bind(output.compiler_output)
+                .bind(verified_at)
+                .bind(verification_id)
+                .execute(&pool)
+                .await {
+                    tracing::error!(error = ?e, "Failed to update verification record");
+                }
+
+                if output.is_verified {
+                    if let Err(e) = sqlx::query("UPDATE contracts SET is_verified = true WHERE id = $1")
+                        .bind(contract_id)
+                        .execute(&pool)
+                        .await {
+                        tracing::error!(error = ?e, "Failed to mark contract as verified");
+                    }
+                }
+            }
+            Err(e) => {
+                if let Err(db_e) = sqlx::query(
+                    "UPDATE verifications SET status = 'failed', error_message = $1 WHERE id = $2"
+                )
+                .bind(e.to_string())
+                .bind(verification_id)
+                .execute(&pool)
+                .await {
+                    tracing::error!(error = ?db_e, "Failed to update verification record with error");
+                }
+            }
+        }
+
+        // Fire-and-forget analytics event
+        if let Err(err) = analytics::record_event(
+            &pool,
+            AnalyticsEventType::ContractVerified,
+            contract_id,
+            None,
+            None,
+            Some(serde_json::json!({ "compiler_version": req_clone.compiler_version })),
+        ).await {
+            tracing::warn!(error = ?err, "failed to record contract_verified event");
+        }
+    });
 
     Ok(Json(serde_json::json!({
         "status": "pending",
-        "message": "Verification started"
+        "message": "Verification started processing in background"
     })))
 }
 
