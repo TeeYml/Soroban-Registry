@@ -490,8 +490,21 @@ pub async fn list_contracts(
         }
     }
 
-    if let Some(ref category) = params.category {
-        let category_clause = format!(" AND c.category = '{}'", category);
+    // Combine single category and multi-category into one list
+    let category_list: Vec<String> = params
+        .categories
+        .as_ref()
+        .filter(|v| !v.is_empty())
+        .cloned()
+        .or_else(|| params.category.as_ref().map(|c| vec![c.clone()]))
+        .unwrap_or_default();
+    if !category_list.is_empty() {
+        let in_clause = category_list
+            .iter()
+            .map(|s| format!("'{}'", s.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let category_clause = format!(" AND c.category IN ({})", in_clause);
         query.push_str(&category_clause);
         count_query.push_str(&category_clause);
     }

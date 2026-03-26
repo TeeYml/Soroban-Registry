@@ -493,12 +493,12 @@ export const api = {
     const queryParams = new URLSearchParams();
     if (params?.query) queryParams.append("query", params.query);
     if (params?.network) queryParams.append("network", params.network);
-    params?.networks?.forEach((network) => queryParams.append("network", network));
+    params?.networks?.forEach((network) => queryParams.append("networks", network));
     if (params?.verified_only !== undefined)
       queryParams.append("verified_only", String(params.verified_only));
     if (params?.category) queryParams.append("category", params.category);
     params?.categories?.forEach((category) =>
-      queryParams.append("category", category),
+      queryParams.append("categories", category),
     );
     if (params?.language) queryParams.append("language", params.language);
     params?.languages?.forEach((language) =>
@@ -525,12 +525,16 @@ export const api = {
       () => fetch(`${API_URL}/api/contracts?${queryParams}`),
       '/api/contracts'
     );
-    // Backend may return "contracts" instead of "items" — normalize for PaginatedResponse
+    // Normalize legacy field names from older backend responses
     const raw = data as unknown as Record<string, unknown>;
-    if (Array.isArray(raw.contracts) && data.items === undefined) {
-      return { ...data, items: raw.contracts as Contract[] };
+    const normalized = { ...data } as PaginatedResponse<Contract> & Record<string, unknown>;
+    if (Array.isArray(raw.contracts) && !Array.isArray(raw.items)) {
+      normalized.items = raw.contracts as Contract[];
     }
-    return data;
+    if (typeof raw.pages === 'number' && raw.total_pages === undefined) {
+      normalized.total_pages = raw.pages as number;
+    }
+    return normalized;
   },
 
   async getContract(id: string, network?: Network): Promise<ContractGetResponse> {

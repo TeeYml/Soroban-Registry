@@ -378,10 +378,12 @@ pub enum SortOrder {
 pub struct ContractSearchParams {
     pub query: Option<String>,
     pub network: Option<Network>,
-    /// Multiple networks filter (e.g. ?network=mainnet&network=testnet)
+    /// Multiple networks filter (e.g. ?networks=mainnet&networks=testnet)
     pub networks: Option<Vec<Network>>,
     pub verified_only: Option<bool>,
     pub category: Option<String>,
+    /// Multiple categories filter (e.g. ?categories=DeFi&categories=NFT)
+    pub categories: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,
     pub maturity: Option<MaturityLevel>,
     pub page: Option<i64>,
@@ -419,11 +421,10 @@ pub struct PaginatedVersionResponse {
 /// Paginated response
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PaginatedResponse<T> {
-    #[serde(rename = "contracts")]
     pub items: Vec<T>,
     pub total: i64,
     pub page: i64,
-    #[serde(rename = "pages")]
+    pub page_size: i64,
     pub total_pages: i64,
     pub next_cursor: Option<String>,
     pub prev_cursor: Option<String>,
@@ -440,6 +441,7 @@ impl<T> PaginatedResponse<T> {
             items,
             total,
             page,
+            page_size: limit,
             total_pages,
             next_cursor: None,
             prev_cursor: None,

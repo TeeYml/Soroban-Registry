@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, ContractSearchParams, Contract } from '@/lib/api';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import ContractCard from '@/components/ContractCard';
 import ContractCardSkeleton from '@/components/ContractCardSkeleton';
 import { ActiveFilters } from '@/components/contracts/ActiveFilters';
@@ -162,48 +161,103 @@ export function ContractsContent() {
     getInitialFilters(new URLSearchParams(searchParams.toString())),
   );
 
-  const debouncedQuery = useDebouncedValue(filters.query, 300);
+  const { query, categories, languages, tags, networks, author, verified_only, sort_by, sort_order, page, page_size } = filters;
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (debouncedQuery) params.set('query', debouncedQuery);
-    filters.categories.forEach((category) => params.append('category', category));
-    filters.languages.forEach((language) => params.append('language', language));
-    filters.tags.forEach((tag) => params.append('tag', tag));
-    filters.networks.forEach((network) => params.append('network', network));
-    if (filters.author) params.set('author', filters.author);
-    if (filters.verified_only) params.set('verified_only', 'true');
-    if (filters.sort_by) params.set('sort_by', filters.sort_by);
-    if (filters.sort_order) params.set('sort_order', filters.sort_order);
-    if (filters.page > 1) params.set('page', String(filters.page));
-    params.set('page_size', String(filters.page_size));
+    if (query) params.set('query', query);
+    categories.forEach((category) => params.append('category', category));
+    languages.forEach((language) => params.append('language', language));
+    tags.forEach((tag) => params.append('tag', tag));
+    networks.forEach((network) => params.append('network', network));
+    if (author) params.set('author', author);
+    if (verified_only) params.set('verified_only', 'true');
+    if (sort_by) params.set('sort_by', sort_by);
+    if (sort_order) params.set('sort_order', sort_order);
+    if (page > 1) params.set('page', String(page));
+    params.set('page_size', String(page_size));
 
     const next = params.toString();
     router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
-  }, [debouncedQuery, filters, pathname, router]);
+  }, [query, categories, languages, tags, networks, author, verified_only, sort_by, sort_order, page, page_size, pathname, router]);
 
-  const apiParams = useMemo<ContractSearchParams>(
-    () => ({
-      query: debouncedQuery || undefined,
-      categories: filters.categories.length > 0 ? filters.categories : undefined,
-      languages: filters.languages.length > 0 ? filters.languages : undefined,
-      tags: filters.tags.length > 0 ? filters.tags : undefined,
-      author: filters.author || undefined,
-      networks: filters.networks.length > 0 ? filters.networks : undefined,
-      verified_only: filters.verified_only,
-      sort_by: filters.sort_by,
-      sort_order: filters.sort_order,
-      page: filters.page,
-      page_size: filters.page_size,
-    }),
-    [debouncedQuery, filters],
-  );
-
-  const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['contracts', apiParams],
-    queryFn: () => api.getContracts(apiParams),
-    placeholderData: (previousData) => previousData,
+  // Fetch all contracts once; filtering/search/pagination done client-side
+  const { data: allContracts, isLoading, isFetching } = useQuery({
+    queryKey: ['contracts', 'all'],
+    queryFn: () => api.getContracts({ limit: 1000 } as ContractSearchParams),
+    staleTime: 60_000,
   });
+
+  const data = useMemo(() => {
+    const all = allContracts?.items ?? [];
+
+    let filtered = all;
+
+    if (filters.query) {
+      const q = filters.query.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.description && c.description.toLowerCase().includes(q)) ||
+          c.tags.some((t) => t.toLowerCase().includes(q)),
+      );
+    }
+
+    if (filters.networks.length > 0) {
+      filtered = filtered.filter((c) => filters.networks.includes(c.network as never));
+    }
+
+    if (filters.categories.length > 0) {
+      filtered = filtered.filter((c) => c.category && filters.categories.includes(c.category));
+    }
+
+    if (filters.languages.length > 0) {
+      const langs = filters.languages.map((l) => l.toLowerCase());
+      filtered = filtered.filter((c) =>
+        c.tags.some((t) => langs.includes(t.toLowerCase())),
+      );
+    }
+
+    if (filters.tags.length > 0) {
+      filtered = filtered.filter((c) =>
+        filters.tags.every((tag) => c.tags.includes(tag)),
+      );
+    }
+
+    if (filters.author) {
+      const author = filters.author.toLowerCase();
+      filtered = filtered.filter((c) =>
+        c.publisher_id.toLowerCase().includes(author),
+      );
+    }
+
+    if (filters.verified_only) {
+      filtered = filtered.filter((c) => c.is_verified);
+    }
+
+    // Sort
+    const order = filters.sort_order === 'asc' ? 1 : -1;
+    filtered = [...filtered].sort((a, b) => {
+      switch (filters.sort_by) {
+        case 'name':
+          return order * a.name.localeCompare(b.name);
+        case 'popularity':
+          return order * ((a.popularity_score ?? 0) - (b.popularity_score ?? 0));
+        case 'updated_at':
+          return order * (new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime());
+        default:
+          return order * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      }
+    });
+
+    // Paginate
+    const total = filtered.length;
+    const total_pages = Math.max(1, Math.ceil(total / filters.page_size));
+    const start = (filters.page - 1) * filters.page_size;
+    const items = filtered.slice(start, start + filters.page_size);
+
+    return { items, total, page: filters.page, page_size: filters.page_size, total_pages };
+  }, [allContracts, filters]);
 
   const { data: stats } = useQuery({
     queryKey: ['stats'],
@@ -218,7 +272,7 @@ export function ContractsContent() {
 
   useEffect(() => {
     const payload = {
-      keyword: debouncedQuery || '',
+      keyword: filters.query || '',
       categories: filters.categories,
       languages: filters.languages,
       networks: filters.networks,
@@ -246,7 +300,7 @@ export function ContractsContent() {
     lastSearchSignatureRef.current = signature;
 
     logEvent('search_performed', payload);
-  }, [debouncedQuery, filters, logEvent]);
+  }, [filters.query, filters, logEvent]);
 
   const clearAllFilters = () =>
     setFilters((current) => ({
@@ -266,10 +320,10 @@ export function ContractsContent() {
   const activeFilterChips = useMemo(() => {
     const chips: Array<{ id: string; label: string; onRemove: () => void }> = [];
 
-    if (debouncedQuery) {
+    if (filters.query) {
       chips.push({
         id: 'query',
-        label: `Search: ${debouncedQuery}`,
+        label: `Search: ${filters.query}`,
         onRemove: () => setFilters((current) => ({ ...current, query: '', page: 1 })),
       });
     }
@@ -352,7 +406,7 @@ export function ContractsContent() {
     }
 
     return chips;
-  }, [debouncedQuery, filters]);
+  }, [filters.query, filters]);
 
   const filterPanel = (
     <FilterPanel
