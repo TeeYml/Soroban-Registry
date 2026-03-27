@@ -271,6 +271,54 @@ fn parse_interaction_type(
     Ok(normalized)
 }
 
+fn infer_target_identifier_from_parameters(
+    parameters: Option<&serde_json::Value>,
+) -> Option<String> {
+    let payload = parameters?.as_object()?;
+    let candidate_keys = [
+        "target_contract_id",
+        "target",
+        "callee",
+        "to_contract",
+        "to",
+        "contract_id",
+    ];
+
+    for key in candidate_keys {
+        let Some(value) = payload.get(key) else {
+            continue;
+        };
+        if let Some(identifier) = value.as_str() {
+            let trimmed = identifier.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+async fn resolve_call_target_contract(
+    db: &sqlx::PgPool,
+    explicit_target: Option<&str>,
+    parameters: Option<&serde_json::Value>,
+) -> Result<Option<Uuid>, ApiError> {
+    let candidate = explicit_target
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| infer_target_identifier_from_parameters(parameters));
+
+    let Some(identifier) = candidate else {
+        return Ok(None);
+    };
+
+    dependency::resolve_contract_id(db, &identifier)
+        .await
+        .map_err(|err| ApiError::internal(format!("Failed to resolve interaction target contract: {}", err)))
+}
+
 async fn record_contract_interaction(
     db: &sqlx::PgPool,
     input: ContractInteractionInsert<'_>,
@@ -319,6 +367,30 @@ async fn record_contract_interaction(
     .execute(&mut *tx)
     .await?;
 
+    if input.interaction_type == "invoke" {
+        if let Some(target_contract_id) = input.target_contract_id {
+            if target_contract_id != input.contract_id {
+                sqlx::query(
+                    r#"
+                    INSERT INTO contract_call_edge_daily_aggregates
+                      (source_contract_id, target_contract_id, network, day, call_count, updated_at)
+                    VALUES ($1, $2, $3, $4, 1, NOW())
+                    ON CONFLICT (source_contract_id, target_contract_id, network, day)
+                    DO UPDATE SET
+                      call_count = contract_call_edge_daily_aggregates.call_count + 1,
+                      updated_at = NOW()
+                    "#,
+                )
+                .bind(input.contract_id)
+                .bind(target_contract_id)
+                .bind(input.network)
+                .bind(input.timestamp.date_naive())
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+    }
+
     tx.commit().await?;
 
     Ok(interaction_id)
@@ -326,6 +398,7 @@ async fn record_contract_interaction(
 
 struct ContractInteractionInsert<'a> {
     contract_id: Uuid,
+    target_contract_id: Option<Uuid>,
     account: Option<&'a str>,
     interaction_type: &'a str,
     transaction_hash: Option<&'a str>,
@@ -1688,16 +1761,24 @@ pub async fn get_contract_dependents(
 )]
 pub async fn get_contract_graph(
     State(state): State<AppState>,
+    Query(query): Query<GetContractQuery>,
 ) -> ApiResult<Json<shared::GraphResponse>> {
     // Try cache first
-    let cache_key = "global:dependency_graph";
-    if let (Some(cached), true) = state.cache.get("system", cache_key).await {
+    let cache_key = format!(
+        "global:dependency_graph:{}",
+        query
+            .network
+            .as_ref()
+            .map(|network| network.to_string())
+            .unwrap_or_else(|| "all".to_string())
+    );
+    if let (Some(cached), true) = state.cache.get("system", &cache_key).await {
         if let Ok(graph) = serde_json::from_str(&cached) {
             return Ok(Json(graph));
         }
     }
 
-    let graph = dependency::build_dependency_graph(&state.db)
+    let graph = dependency::build_dependency_graph(&state.db, query.network)
         .await
         .map_err(|e| ApiError::internal(format!("Failed to build graph: {}", e)))?;
 
@@ -1707,7 +1788,7 @@ pub async fn get_contract_graph(
             .cache
             .put(
                 "system",
-                cache_key,
+                &cache_key,
                 serialized,
                 Some(Duration::from_secs(300)),
             )
@@ -2903,10 +2984,17 @@ pub async fn post_contract_interaction(
         parse_interaction_type(req.interaction_type.as_deref(), req.method.as_deref())?;
     let created_at = req.timestamp.unwrap_or_else(chrono::Utc::now);
     let network = req.network.unwrap_or(contract_network);
+    let target_contract_id = resolve_call_target_contract(
+        &state.db,
+        req.target_contract_id.as_deref(),
+        req.parameters.as_ref(),
+    )
+    .await?;
     let interaction_id = record_contract_interaction(
         &state.db,
         ContractInteractionInsert {
             contract_id: contract_uuid,
+            target_contract_id,
             account: req.account.as_deref(),
             interaction_type: &interaction_type,
             transaction_hash: req.transaction_hash.as_deref(),
@@ -2975,10 +3063,17 @@ pub async fn post_contract_interactions_batch(
             .network
             .clone()
             .unwrap_or_else(|| contract_network.clone());
+        let target_contract_id = resolve_call_target_contract(
+            &state.db,
+            i.target_contract_id.as_deref(),
+            i.parameters.as_ref(),
+        )
+        .await?;
         let interaction_id = record_contract_interaction(
             &state.db,
             ContractInteractionInsert {
                 contract_id: contract_uuid,
+                target_contract_id,
                 account: i.account.as_deref(),
                 interaction_type: &interaction_type,
                 transaction_hash: i.transaction_hash.as_deref(),
