@@ -76,6 +76,16 @@ pub fn contract_routes() -> Router<AppState> {
             "/api/contracts/:id/versions",
             get(handlers::get_contract_versions).post(handlers::create_contract_version),
         )
+        // Static segment "compare" must be registered before the dynamic ":version" route
+        // so Axum resolves it correctly.
+        .route(
+            "/api/contracts/:id/versions/compare",
+            get(handlers::compare_contract_versions),
+        )
+        .route(
+            "/api/contracts/:id/versions/:version",
+            get(handlers::get_specific_contract_version),
+        )
         .route(
             "/api/contracts/:id/changelog",
             get(handlers::get_contract_changelog),
@@ -459,6 +469,11 @@ pub fn admin_routes() -> Router<AppState> {
         .route(
             "/api/admin/categories/:id",
             put(category_handlers::update_category).delete(category_handlers::delete_category),
+        )
+        // Version revert (issue #486) – admin-only
+        .route(
+            "/api/admin/contracts/:id/versions/:version/revert",
+            post(handlers::revert_contract_version),
         )
         .route_layer(middleware::from_fn(auth::require_admin))
 }

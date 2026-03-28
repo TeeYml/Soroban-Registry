@@ -56,6 +56,9 @@ pub struct Contract {
     pub organization_id: Option<Uuid>,
     /// Visibility level
     pub visibility: VisibilityType,
+    /// The currently active version string for this contract (Issue #486)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_version: Option<String>,
 }
 
 #[derive(
@@ -186,6 +189,15 @@ pub struct ContractVersion {
     /// Signature algorithm identifier (e.g. "ed25519")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signature_algorithm: Option<String>,
+    /// Structured notes describing what changed in this version (Issue #486)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_notes: Option<String>,
+    /// True when this version was created by reverting to a previous version (Issue #486)
+    #[serde(default)]
+    pub is_revert: bool,
+    /// The version string that was reverted to, when is_revert = true (Issue #486)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reverted_from: Option<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -415,6 +427,9 @@ pub struct CreateContractVersionRequest {
     pub source_url: Option<String>,
     pub commit_hash: Option<String>,
     pub release_notes: Option<String>,
+    /// Structured change notes for this version (Issue #486)
+    #[serde(default)]
+    pub change_notes: Option<String>,
     /// Optional Ed25519 signature and publisher key metadata for this version
     #[serde(default)]
     pub signature: Option<String>,
@@ -422,6 +437,42 @@ pub struct CreateContractVersionRequest {
     pub publisher_key: Option<String>,
     #[serde(default)]
     pub signature_algorithm: Option<String>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERSION TRACKING TYPES (Issue #486)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A single field-level difference between two contract versions
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct VersionFieldDiff {
+    /// Name of the field that changed
+    pub field: String,
+    /// Value in the `from` version (null if the field was absent)
+    pub from_value: Option<serde_json::Value>,
+    /// Value in the `to` version (null if the field was removed)
+    pub to_value: Option<serde_json::Value>,
+}
+
+/// Response for GET /api/contracts/:id/versions/compare
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct VersionCompareResponse {
+    pub contract_id: Uuid,
+    pub from_version: ContractVersion,
+    pub to_version: ContractVersion,
+    /// List of fields that differ between the two versions
+    pub differences: Vec<VersionFieldDiff>,
+    /// Whether the WASM hash changed (indicates a code change)
+    pub wasm_changed: bool,
+}
+
+/// Request body for POST /api/admin/contracts/:id/versions/:version/revert
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct RevertVersionRequest {
+    /// Optional notes explaining why the revert was performed
+    pub change_notes: Option<String>,
+    /// UUID of the admin performing the revert (used for audit log)
+    pub admin_id: Uuid,
 }
 
 // ────────────────────────────────────────────────────────────────────────────
