@@ -63,14 +63,24 @@ function computeLayout(
     });
   });
 
-  // Compute node values from links
+  // Compute node values from links using max(total_in, total_out)
+  const inTotals = new Map<string, number>();
+  const outTotals = new Map<string, number>();
+
   links.forEach((l) => {
-    const src = nodeMap.get(l.source);
-    const tgt = nodeMap.get(l.target);
-    if (src) src.value += l.value;
-    if (tgt) tgt.value += l.value;
+    if (l.source) {
+      outTotals.set(l.source, (outTotals.get(l.source) ?? 0) + l.value);
+    }
+    if (l.target) {
+      inTotals.set(l.target, (inTotals.get(l.target) ?? 0) + l.value);
+    }
   });
 
+  nodeMap.forEach((node, id) => {
+    const inTotal = inTotals.get(id) ?? 0;
+    const outTotal = outTotals.get(id) ?? 0;
+    node.value = Math.max(inTotal, outTotal);
+  });
   const numCols = COLUMN_ORDER.length;
   const colWidth = (width - NODE_WIDTH) / (numCols - 1);
 
