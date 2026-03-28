@@ -12,8 +12,23 @@ import Navbar from "@/components/Navbar";
 import { AlertCircle } from "lucide-react";
 
 function PublisherProfileContent() {
-  const params = useParams();
-  const address = params.address as string;
+  const params = useParams<{ address?: string | string[] }>() ?? {};
+  const addressParam = params.address;
+  const address = Array.isArray(addressParam) ? addressParam[0] : addressParam;
+
+  if (!address) {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <Navbar />
+        <div className="max-w-4xl mx-auto px-4 py-10">
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <div className="text-sm font-semibold text-foreground">Missing publisher address</div>
+            <div className="mt-1 text-sm text-muted-foreground">Open this page from a publisher link.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const { data: publisher, isLoading, error } = useQuery({
     queryKey: ["publisher", address],

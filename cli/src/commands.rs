@@ -611,14 +611,13 @@ pub async fn migrate(
     dry_run: bool,
 ) -> Result<()> {
     use sha2::{Digest, Sha256};
-    use std::fs;
     use tokio::process::Command;
 
     println!("\n{}", "Migration Tool".bold().cyan());
     println!("{}", "=".repeat(80).cyan());
 
     // 1. Read WASM file
-    let wasm_bytes = fs::read(wasm_path)
+    let wasm_bytes = std::fs::read(wasm_path)
         .with_context(|| format!("Failed to read WASM file at {}", wasm_path))?;
 
     // 2. Compute Hash
@@ -627,7 +626,13 @@ pub async fn migrate(
     let wasm_hash = hex::encode(hasher.finalize());
 
     println!("Contract ID: {}", contract_id.green());
-@@ -298,51 +309,51 @@ pub async fn migrate(
+    println!("WASM Hash: {}", wasm_hash.bright_black());
+
+    if dry_run {
+        println!("\n{}", "Dry run enabled: not contacting the registry API.".yellow());
+        println!("{}", "✓ Migration simulation complete (dry-run).".green().bold());
+        return Ok(());
+    }
 
     // 3. Create Migration Record (Pending)
     let client = reqwest::Client::new();
@@ -654,7 +659,6 @@ pub async fn migrate(
 
     let migration: serde_json::Value = response.json().await?;
     let migration_id = extract_migration_id(&migration)?;
-    let migration_id = crate::conversions::as_str(&migration["id"], "id")?;
     println!("{}", "OK".green());
     println!("Migration ID: {}", migration_id);
 
@@ -680,87 +684,6 @@ pub async fn migrate(
             println!("{}", "Simulating SUCCESS...".green());
             (
                 shared::models::MigrationStatus::Success,
-@@ -626,51 +637,54 @@ pub fn doc(contract_path: &str, output_dir: &str) -> Result<()> {
-    println!("{} Documentation generated at {:?}", "✓".green(), out_path);
-    Ok(())
-}
-
-pub async fn profile(
-    contract_path: &str,
-    method: Option<&str>,
-    output: Option<&str>,
-    flamegraph: Option<&str>,
-    compare: Option<&str>,
-    show_recommendations: bool,
-) -> Result<()> {
-    let path = Path::new(contract_path);
-    if !path.exists() {
-        anyhow::bail!("Contract file not found: {}", contract_path);
-    }
-
-    println!("\n{}", "Profiling contract...".bold().cyan());
-    println!("{}", "=".repeat(80).cyan());
-
-    let mut profiler = profiler::Profiler::new();
-    profiler::simulate_execution(path, method, &mut profiler)?;
-    let profile_data = profiler.finish(contract_path.to_string(), method.map(|s| s.to_string()));
-
-    println!("\n{}", "Profile Results:".bold().green());
-    println!(
-        "Total Duration: {:.2}ms",
-        profile_data.total_duration.as_secs_f64() * 1000.0
-    );
-    println!("Overhead: {:.2}%", profile_data.overhead_percent);
-    println!("Functions Profiled: {}", profile_data.functions.len());
-
-    let mut sorted_functions: Vec<_> = profile_data.functions.values().collect();
-    sorted_functions.sort_by(|a, b| b.total_time.cmp(&a.total_time));
-
-    println!("\n{}", "Top Functions:".bold());
-    for (i, func) in sorted_functions.iter().take(10).enumerate() {
-        println!(
-            "{}. {} - {:.2}ms ({} calls, avg: {:.2}μs)",
-            i + 1,
-            func.name.bold(),
-            func.total_time.as_secs_f64() * 1000.0,
-            func.call_count,
-            func.avg_time.as_secs_f64() * 1_000_000.0
-        );
-    }
-
-    if let Some(output_path) = output {
-        let json = serde_json::to_string_pretty(&profile_data)?;
-        std::fs::write(output_path, json)
-            .with_context(|| format!("Failed to write profile to: {}", output_path))?;
-        println!("\n{} Profile exported to: {}", "✓".green(), output_path);
-    }
-
-@@ -687,202 +701,254 @@ pub async fn profile(
-        let comparisons = profiler::compare_profiles(&baseline, &profile_data);
-
-        println!("\n{}", "Comparison Results:".bold().yellow());
-        for comp in comparisons.iter().take(10) {
-            let sign = if comp.time_diff_ns > 0 { "+" } else { "" };
-            println!(
-                "{}: {} ({}{:.2}%, {:.2}ms → {:.2}ms)",
-                comp.function.bold(),
-                comp.status,
-                sign,
-                comp.time_diff_percent,
-                comp.baseline_time.as_secs_f64() * 1000.0,
-                comp.current_time.as_secs_f64() * 1000.0
-            );
-        }
-    }
-
-    if show_recommendations {
-        let recommendations = profiler::generate_recommendations(&profile_data);
-        println!("\n{}", "Recommendations:".bold().magenta());
-        for (i, rec) in recommendations.iter().enumerate() {
-            println!("{}. {}", i + 1, rec);
-        }
-    }
-
                 "Simulation: Migration succeeded.".to_string(),
             )
         }

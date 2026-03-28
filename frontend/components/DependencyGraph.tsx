@@ -58,6 +58,14 @@ interface TooltipState {
   dependents: number;
 }
 
+interface EdgeTooltipState {
+  x: number;
+  y: number;
+  edge: GraphEdge;
+  sourceName: string;
+  targetName: string;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
   function DependencyGraph(
@@ -68,6 +76,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
     const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     const gRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
     const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+    const [edgeTooltip, setEdgeTooltip] = useState<EdgeTooltipState | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const scrollWrapperRef = useRef<HTMLDivElement>(null); // ← new: scroll wrapper ref
     const [, setPinnedNodes] = useState<Set<string>>(new Set());
@@ -229,6 +238,12 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
           data: e,
         }));
 
+      const baseEdgeColor = (link: SimLink) => link.data.is_circular ? "#ef4444" : "#374151";
+      const baseEdgeOpacity = (link: SimLink) => {
+        if (link.data.is_circular) return isLargeGraph ? 0.72 : 0.9;
+        return isLargeGraph ? 0.35 : 0.6;
+      };
+
       // ── Force simulation ──
       const simulation = d3.forceSimulation<SimNode>(simNodes)
         .force("link", d3.forceLink<SimNode, SimLink>(simLinks)
@@ -249,10 +264,27 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         .data(simLinks)
         .join("line")
         .attr("class", "graph-edge")
-        .attr("stroke", "#374151")
+        .attr("stroke", (d) => baseEdgeColor(d))
         .attr("stroke-width", isLargeGraph ? 0.8 : 1.5)
-        .attr("stroke-opacity", isLargeGraph ? 0.35 : 0.6)
+        .attr("stroke-opacity", (d) => baseEdgeOpacity(d))
+        .attr("stroke-dasharray", (d) => d.data.is_circular ? "4 3" : null)
         .attr("marker-end", isVeryLargeGraph ? null : "url(#arrow)");
+
+      const edgeLabels = !isLargeGraph
+        ? g.append("g")
+          .attr("class", "edge-labels")
+          .selectAll<SVGTextElement, SimLink>("text")
+          .data(simLinks)
+          .join("text")
+          .attr("font-size", "9px")
+          .attr("fill", (d) => d.data.is_circular ? "#fca5a5" : "#9ca3af")
+          .attr("text-anchor", "middle")
+          .attr("pointer-events", "none")
+          .text((d) => {
+            if (!d.data.call_frequency) return "";
+            return d.data.is_estimated ? `~${d.data.call_frequency}` : `${d.data.call_frequency}`;
+          })
+        : null;
 
       // ── Nodes ──
       const nodeGroup = g.append("g").attr("class", "nodes");
@@ -330,6 +362,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
 
       // ── Tooltip + hover highlight ──
       nodeEls.on("mouseenter", (event: MouseEvent, d) => {
+        setEdgeTooltip(null);
         const svgRect = svgEl.getBoundingClientRect();
         setTooltip({
           x: event.clientX - svgRect.left,
@@ -358,7 +391,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
             .attr("stroke", (ld) => {
               const src = (ld.source as SimNode).id;
               const tgt = (ld.target as SimNode).id;
-              return (src === d.id || tgt === d.id) ? "#60a5fa" : "#374151";
+              return (src === d.id || tgt === d.id) ? "#60a5fa" : baseEdgeColor(ld);
             });
 
           nodeEls.attr("opacity", (nd) => connected.has(nd.id) ? 1 : 0.2);
@@ -374,10 +407,43 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         setTooltip(null);
         if (!selectedNode) {
           linkEls
-            .attr("stroke-opacity", isLargeGraph ? 0.35 : 0.6)
-            .attr("stroke", "#374151");
+            .attr("stroke-opacity", (d) => baseEdgeOpacity(d))
+            .attr("stroke", (d) => baseEdgeColor(d));
           nodeEls.attr("opacity", 1);
         }
+      });
+
+      linkEls.on("mouseenter", (event: MouseEvent, d) => {
+        setTooltip(null);
+        const svgRect = svgEl.getBoundingClientRect();
+        const sourceNode = d.source as SimNode;
+        const targetNode = d.target as SimNode;
+        setEdgeTooltip({
+          x: event.clientX - svgRect.left,
+          y: event.clientY - svgRect.top,
+          edge: d.data,
+          sourceName: sourceNode.data.name,
+          targetName: targetNode.data.name,
+        });
+
+        d3.select(event.currentTarget as SVGLineElement)
+          .attr("stroke", d.data.is_circular ? "#dc2626" : "#60a5fa")
+          .attr("stroke-opacity", 1)
+          .attr("stroke-width", isLargeGraph ? 1.4 : 2.2);
+      });
+
+      linkEls.on("mousemove", (event: MouseEvent) => {
+        const svgRect = svgEl.getBoundingClientRect();
+        setEdgeTooltip((prev) => prev ? { ...prev, x: event.clientX - svgRect.left, y: event.clientY - svgRect.top } : null);
+      });
+
+      linkEls.on("mouseleave", (event: MouseEvent, d) => {
+        setEdgeTooltip(null);
+        if (selectedNode) return;
+        d3.select(event.currentTarget as SVGLineElement)
+          .attr("stroke", baseEdgeColor(d))
+          .attr("stroke-opacity", baseEdgeOpacity(d))
+          .attr("stroke-width", isLargeGraph ? 0.8 : 1.5);
       });
 
       // ── Click: select node ──
@@ -423,6 +489,12 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         nodeEls.select("circle")
           .attr("cx", 0)
           .attr("cy", 0);
+
+        if (edgeLabels) {
+          edgeLabels
+            .attr("x", (d) => (((d.source as SimNode).x ?? 0) + ((d.target as SimNode).x ?? 0)) / 2)
+            .attr("y", (d) => ((((d.source as SimNode).y ?? 0) + ((d.target as SimNode).y ?? 0)) / 2) - 4);
+        }
       });
 
       // Initial zoom-to-fit
@@ -465,8 +537,8 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
       if (!selectedNode) {
         g.selectAll<SVGGElement, SimNode>("g.node").attr("opacity", 1);
         g.selectAll<SVGLineElement, SimLink>("line.graph-edge")
-          .attr("opacity", 0.6)
-          .attr("stroke", "#374151");
+          .attr("opacity", (d) => d.data.is_circular ? 0.9 : 0.6)
+          .attr("stroke", (d) => d.data.is_circular ? "#ef4444" : "#374151");
         return;
       }
 
@@ -492,7 +564,9 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         .attr("stroke", (d) => {
           const src = (d.source as SimNode).id;
           const tgt = (d.target as SimNode).id;
-          return (src === selectedNode.id || tgt === selectedNode.id) ? "#60a5fa" : "#374151";
+          return (src === selectedNode.id || tgt === selectedNode.id)
+            ? (d.data.is_circular ? "#dc2626" : "#60a5fa")
+            : (d.data.is_circular ? "#ef4444" : "#374151");
         });
     }, [selectedNode]);
 
@@ -598,6 +672,49 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
                   <span className="text-muted-foreground">Dependents</span>
                   <span className="text-foreground">{tooltip.dependents}</span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {edgeTooltip && (
+            <div
+              className="pointer-events-none absolute z-40 bg-background/95 backdrop-blur-xl border border-border rounded-xl px-3 py-2.5 shadow-2xl text-xs max-w-[260px]"
+              style={{
+                left: edgeTooltip.x + 14,
+                top: edgeTooltip.y - 10,
+                transform: edgeTooltip.x > (containerRef.current?.clientWidth ?? 0) - 280
+                  ? "translateX(-110%)"
+                  : "none",
+              }}
+            >
+              <p className="font-semibold text-foreground mb-1 truncate">{edgeTooltip.sourceName} → {edgeTooltip.targetName}</p>
+              <div className="space-y-0.5">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Type</span>
+                  <span className="text-foreground uppercase tracking-wide">{edgeTooltip.edge.dependency_type}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Call frequency</span>
+                  <span className="text-foreground">{edgeTooltip.edge.call_frequency ?? 0}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Call volume</span>
+                  <span className="text-foreground">{edgeTooltip.edge.call_volume ?? 0}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Telemetry</span>
+                  <span className={edgeTooltip.edge.is_estimated ? "text-amber-400" : "text-emerald-400"}>
+                    {edgeTooltip.edge.is_estimated ? "Estimated" : "Exact"}
+                  </span>
+                </div>
+                {edgeTooltip.edge.is_estimated && (
+                  <div className="text-amber-300 text-[11px] pt-1">
+                    Inferred from source-level aggregate interactions.
+                  </div>
+                )}
+                {edgeTooltip.edge.is_circular && (
+                  <div className="text-red-400 text-[11px] pt-1">Circular dependency detected</div>
+                )}
               </div>
             </div>
           )}

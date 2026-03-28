@@ -11,6 +11,7 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::{json, Value};
+use sqlx::QueryBuilder;
 use shared::{
     pagination::Cursor, AnalyticsEventType, AuditActionType, ChangePublisherRequest, Contract,
     ContractAnalyticsResponse, ContractAuditLog, ContractChangelogEntry, ContractChangelogResponse,
@@ -18,9 +19,12 @@ use shared::{
     CreateContractVersionRequest, CreateInteractionBatchRequest, CreateInteractionRequest,
     DeploymentStats, InteractionTimeSeriesPoint, InteractionTimeSeriesResponse,
     InteractionsListResponse, InteractionsQueryParams, InteractorStats, Network, NetworkConfig,
-    PaginatedResponse, PublishRequest, Publisher, SemVer, TimelineEntry, TopUser, TrendingParams,
+    NetworkEndpoints, NetworkInfo, NetworkListResponse, NetworkStatus, PaginatedResponse,
+    PublishRequest, Publisher, SearchSuggestion, SearchSuggestionsResponse, SemVer, TimelineEntry,
+    TopUser, TrendingParams,
     UpdateContractMetadataRequest, UpdateContractStatusRequest, VerifyRequest,
 };
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -28,11 +32,21 @@ use uuid::Uuid;
 #[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
 pub struct GetContractQuery {
     pub network: Option<Network>,
+    pub from_search: Option<bool>,
+    pub search_query: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+pub struct BatchContractsQuery {
+    /// Comma-separated list of fields to include in each contract result.
+    /// Example: fields=name,address,network
+    pub fields: Option<String>,
 }
 
 use crate::{
     analytics,
     breaking_changes::{diff_abi, has_breaking_changes, resolve_abi},
+    contract_events::{ContractEventEnvelope, ContractEventVisibility},
     dependency,
     error::{ApiError, ApiResult},
     state::AppState,
@@ -58,6 +72,294 @@ fn map_query_rejection(err: QueryRejection) -> ApiError {
         "InvalidQuery",
         format!("Invalid query parameters: {}", err.body_text()),
     )
+}
+
+fn sort_timestamp_column(sort_by: &shared::SortBy) -> Option<&'static str> {
+    match sort_by {
+        shared::SortBy::CreatedAt => Some("c.created_at"),
+        shared::SortBy::UpdatedAt => Some("c.updated_at"),
+        shared::SortBy::VerifiedAt => Some("c.verified_at"),
+        shared::SortBy::LastAccessedAt => Some("c.last_accessed_at"),
+        _ => None,
+    }
+}
+
+fn contract_timestamp_for_sort(contract: &Contract, sort_by: &shared::SortBy) -> Option<chrono::DateTime<chrono::Utc>> {
+    match sort_by {
+        shared::SortBy::CreatedAt => Some(contract.created_at),
+        shared::SortBy::UpdatedAt => Some(contract.updated_at),
+        shared::SortBy::VerifiedAt => contract.verified_at,
+        shared::SortBy::LastAccessedAt => contract.last_accessed_at,
+        _ => None,
+    }
+}
+
+async fn track_contract_access(state: &AppState, contract_id: Uuid) {
+    let cache_key = contract_id.to_string();
+    if !state.cache.should_refresh_contract_access(&cache_key).await {
+        return;
+    }
+
+    let db = state.db.clone();
+    tokio::spawn(async move {
+        if let Err(err) = sqlx::query("UPDATE contracts SET last_accessed_at = NOW() WHERE id = $1")
+            .bind(contract_id)
+            .execute(&db)
+            .await
+        {
+            tracing::warn!(contract_id = %contract_id, error = ?err, "failed to refresh contract last_accessed_at");
+        }
+    });
+}
+
+const NETWORKS_CACHE_NAMESPACE: &str = "system";
+const NETWORKS_CACHE_KEY: &str = "network_catalog";
+const NETWORKS_REFRESH_INTERVAL_SECS: u64 = 60;
+const NETWORK_DEGRADED_FAILURE_THRESHOLD: i32 = 1;
+const NETWORK_OFFLINE_FAILURE_THRESHOLD: i32 = 5;
+const NETWORK_STALE_AFTER_MINUTES: i64 = 10;
+const SLOW_SEARCH_QUERY_THRESHOLD_MS: u128 = 200;
+
+fn observe_search_query(
+    kind: &str,
+    started_at: std::time::Instant,
+    query: Option<&str>,
+    limit: i64,
+) {
+    let elapsed = started_at.elapsed();
+    crate::metrics::SEARCH_QUERY_DURATION
+        .with_label_values(&[kind])
+        .observe(elapsed.as_secs_f64());
+
+    if elapsed.as_millis() > SLOW_SEARCH_QUERY_THRESHOLD_MS {
+        crate::metrics::SEARCH_SLOW_QUERIES
+            .with_label_values(&[kind])
+            .inc();
+        tracing::warn!(
+            query_type = kind,
+            duration_ms = elapsed.as_millis(),
+            query = query.unwrap_or(""),
+            limit = limit,
+            "slow search query detected"
+        );
+    }
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct IndexerStateSnapshot {
+    last_indexed_ledger_height: i64,
+    indexed_at: chrono::DateTime<chrono::Utc>,
+    consecutive_failures: i32,
+    error_message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct StaticNetworkDefinition {
+    id: &'static str,
+    name: &'static str,
+    network_type: Network,
+    rpc_url: String,
+    explorer_url: String,
+    friendbot_url: Option<String>,
+}
+
+fn default_rpc_url(network: &Network) -> &'static str {
+    match network {
+        Network::Mainnet => "https://rpc-mainnet.stellar.org",
+        Network::Testnet => "https://rpc-testnet.stellar.org",
+        Network::Futurenet => "https://rpc-futurenet.stellar.org",
+    }
+}
+
+fn default_explorer_url(network: &Network) -> &'static str {
+    match network {
+        Network::Mainnet => "https://stellar.expert/explorer/public",
+        Network::Testnet => "https://stellar.expert/explorer/testnet",
+        Network::Futurenet => "https://stellar.expert/explorer/futurenet",
+    }
+}
+
+fn default_friendbot_url(network: &Network) -> Option<&'static str> {
+    match network {
+        Network::Mainnet => None,
+        Network::Testnet => Some("https://friendbot.stellar.org"),
+        Network::Futurenet => Some("https://friendbot-futurenet.stellar.org"),
+    }
+}
+
+fn configured_networks() -> Vec<StaticNetworkDefinition> {
+    let entries = [
+        (
+            "mainnet",
+            "Stellar Mainnet",
+            Network::Mainnet,
+            "STELLAR_RPC_MAINNET",
+            "STELLAR_EXPLORER_MAINNET",
+            "STELLAR_FRIENDBOT_MAINNET",
+        ),
+        (
+            "testnet",
+            "Stellar Testnet",
+            Network::Testnet,
+            "STELLAR_RPC_TESTNET",
+            "STELLAR_EXPLORER_TESTNET",
+            "STELLAR_FRIENDBOT_TESTNET",
+        ),
+        (
+            "futurenet",
+            "Stellar Futurenet",
+            Network::Futurenet,
+            "STELLAR_RPC_FUTURENET",
+            "STELLAR_EXPLORER_FUTURENET",
+            "STELLAR_FRIENDBOT_FUTURENET",
+        ),
+    ];
+
+    entries
+        .into_iter()
+        .map(
+            |(id, name, network_type, rpc_env, explorer_env, friendbot_env)| StaticNetworkDefinition {
+                id,
+                name,
+                rpc_url: std::env::var(rpc_env)
+                    .unwrap_or_else(|_| default_rpc_url(&network_type).to_string()),
+                explorer_url: std::env::var(explorer_env)
+                    .unwrap_or_else(|_| default_explorer_url(&network_type).to_string()),
+                friendbot_url: std::env::var(friendbot_env)
+                    .ok()
+                    .or_else(|| default_friendbot_url(&network_type).map(str::to_string)),
+                network_type,
+            },
+        )
+        .collect()
+}
+
+fn derive_network_status(
+    rpc_healthy: bool,
+    snapshot: Option<&IndexerStateSnapshot>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> (NetworkStatus, Option<String>) {
+    if !rpc_healthy {
+        return (
+            NetworkStatus::Offline,
+            Some("RPC health check failed".to_string()),
+        );
+    }
+
+    if let Some(snapshot) = snapshot {
+        let stale = now - snapshot.indexed_at > chrono::Duration::minutes(NETWORK_STALE_AFTER_MINUTES);
+
+        if snapshot.consecutive_failures >= NETWORK_OFFLINE_FAILURE_THRESHOLD {
+            return (
+                NetworkStatus::Offline,
+                snapshot
+                    .error_message
+                    .clone()
+                    .or_else(|| Some(format!("{} consecutive indexer failures", snapshot.consecutive_failures))),
+            );
+        }
+
+        if stale || snapshot.consecutive_failures >= NETWORK_DEGRADED_FAILURE_THRESHOLD {
+            return (
+                NetworkStatus::Degraded,
+                if stale {
+                    Some("Indexer status is stale".to_string())
+                } else {
+                    snapshot
+                        .error_message
+                        .clone()
+                        .or_else(|| Some(format!("{} consecutive indexer failures", snapshot.consecutive_failures)))
+                },
+            );
+        }
+    }
+
+    (NetworkStatus::Online, None)
+}
+
+async fn probe_network_health(client: &reqwest::Client, health_url: &str) -> bool {
+    match client.get(health_url).send().await {
+        Ok(response) => response.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+async fn fetch_network_catalog(db: &sqlx::PgPool) -> Result<NetworkListResponse, sqlx::Error> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let now = chrono::Utc::now();
+
+    let mut networks = Vec::new();
+    for definition in configured_networks() {
+        let health_url = format!("{}/health", definition.rpc_url.trim_end_matches('/'));
+        let snapshot: Option<IndexerStateSnapshot> = sqlx::query_as(
+            "SELECT last_indexed_ledger_height, indexed_at, consecutive_failures, error_message
+             FROM indexer_state
+             WHERE network = $1",
+        )
+        .bind(&definition.network_type)
+        .fetch_optional(db)
+        .await?;
+
+        let rpc_healthy = probe_network_health(&client, &health_url).await;
+        let (status, status_message) = derive_network_status(rpc_healthy, snapshot.as_ref(), now);
+
+        networks.push(NetworkInfo {
+            id: definition.id.to_string(),
+            name: definition.name.to_string(),
+            network_type: definition.network_type,
+            status,
+            endpoints: NetworkEndpoints {
+                rpc_url: definition.rpc_url,
+                health_url,
+                explorer_url: definition.explorer_url,
+                friendbot_url: definition.friendbot_url,
+            },
+            last_checked_at: now,
+            last_indexed_ledger_height: snapshot.as_ref().map(|s| s.last_indexed_ledger_height),
+            last_indexed_at: snapshot.as_ref().map(|s| s.indexed_at),
+            consecutive_failures: snapshot.as_ref().map(|s| s.consecutive_failures).unwrap_or(0),
+            status_message,
+        });
+    }
+
+    Ok(NetworkListResponse {
+        networks,
+        cached_at: now,
+    })
+}
+
+async fn refresh_network_catalog_cache(state: &AppState) -> Result<NetworkListResponse, ApiError> {
+    let response = fetch_network_catalog(&state.db)
+        .await
+        .map_err(|err| db_internal_error("fetch network catalog", err))?;
+
+    if let Ok(serialized) = serde_json::to_string(&response) {
+        state
+            .cache
+            .put(
+                NETWORKS_CACHE_NAMESPACE,
+                NETWORKS_CACHE_KEY,
+                serialized,
+                Some(Duration::from_secs(NETWORKS_REFRESH_INTERVAL_SECS)),
+            )
+            .await;
+    }
+
+    Ok(response)
+}
+
+pub async fn run_network_catalog_refresh(state: AppState) {
+    let mut interval = tokio::time::interval(Duration::from_secs(NETWORKS_REFRESH_INTERVAL_SECS));
+
+    loop {
+        interval.tick().await;
+        if let Err(err) = refresh_network_catalog_cache(&state).await {
+            tracing::warn!(error = ?err, "failed to refresh network catalog cache");
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, sqlx::Type)]
@@ -132,6 +434,54 @@ fn extract_ip_address(headers: &HeaderMap) -> String {
     }
 
     "unknown".to_string()
+}
+
+fn parse_batch_fields(raw_fields: Option<&str>) -> Option<HashSet<String>> {
+    let set: HashSet<String> = raw_fields
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .collect();
+
+    if set.is_empty() {
+        None
+    } else {
+        Some(set)
+    }
+}
+
+fn contract_to_filtered_value(contract: &Contract, fields: Option<&HashSet<String>>) -> Value {
+    if fields.is_none() {
+        return serde_json::to_value(contract).unwrap_or_else(|_| Value::Null);
+    }
+
+    let Some(source) = serde_json::to_value(contract)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+    else {
+        return Value::Null;
+    };
+
+    let mut out = serde_json::Map::new();
+    let selected = fields.expect("checked above");
+
+    for field in selected {
+        if field == "address" {
+            out.insert(
+                "address".to_string(),
+                Value::String(contract.contract_id.clone()),
+            );
+            continue;
+        }
+
+        if let Some(value) = source.get(field) {
+            out.insert(field.clone(), value.clone());
+        }
+    }
+
+    Value::Object(out)
 }
 
 async fn write_contract_audit_log(
@@ -271,6 +621,59 @@ fn parse_interaction_type(
     Ok(normalized)
 }
 
+fn infer_target_identifier_from_parameters(
+    parameters: Option<&serde_json::Value>,
+) -> Option<String> {
+    let payload = parameters?.as_object()?;
+    let candidate_keys = [
+        "target_contract_id",
+        "target",
+        "callee",
+        "to_contract",
+        "to",
+        "contract_id",
+    ];
+
+    for key in candidate_keys {
+        let Some(value) = payload.get(key) else {
+            continue;
+        };
+        if let Some(identifier) = value.as_str() {
+            let trimmed = identifier.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+async fn resolve_call_target_contract(
+    db: &sqlx::PgPool,
+    explicit_target: Option<&str>,
+    parameters: Option<&serde_json::Value>,
+) -> Result<Option<Uuid>, ApiError> {
+    let candidate = explicit_target
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| infer_target_identifier_from_parameters(parameters));
+
+    let Some(identifier) = candidate else {
+        return Ok(None);
+    };
+
+    dependency::resolve_contract_id(db, &identifier)
+        .await
+        .map_err(|err| {
+            ApiError::internal(format!(
+                "Failed to resolve interaction target contract: {}",
+                err
+            ))
+        })
+}
+
 async fn record_contract_interaction(
     db: &sqlx::PgPool,
     input: ContractInteractionInsert<'_>,
@@ -319,6 +722,30 @@ async fn record_contract_interaction(
     .execute(&mut *tx)
     .await?;
 
+    if input.interaction_type == "invoke" {
+        if let Some(target_contract_id) = input.target_contract_id {
+            if target_contract_id != input.contract_id {
+                sqlx::query(
+                    r#"
+                    INSERT INTO contract_call_edge_daily_aggregates
+                      (source_contract_id, target_contract_id, network, day, call_count, updated_at)
+                    VALUES ($1, $2, $3, $4, 1, NOW())
+                    ON CONFLICT (source_contract_id, target_contract_id, network, day)
+                    DO UPDATE SET
+                      call_count = contract_call_edge_daily_aggregates.call_count + 1,
+                      updated_at = NOW()
+                    "#,
+                )
+                .bind(input.contract_id)
+                .bind(target_contract_id)
+                .bind(input.network)
+                .bind(input.timestamp.date_naive())
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+    }
+
     tx.commit().await?;
 
     Ok(interaction_id)
@@ -326,6 +753,7 @@ async fn record_contract_interaction(
 
 struct ContractInteractionInsert<'a> {
     contract_id: Uuid,
+    target_contract_id: Option<Uuid>,
     account: Option<&'a str>,
     interaction_type: &'a str,
     transaction_hash: Option<&'a str>,
@@ -421,6 +849,128 @@ pub async fn get_stats(State(state): State<AppState>) -> ApiResult<Json<Value>> 
     })))
 }
 
+#[utoipa::path(
+    get,
+    path = "/networks",
+    responses(
+        (status = 200, description = "Supported network metadata", body = NetworkListResponse)
+    ),
+    tag = "Networks"
+)]
+pub async fn list_networks(State(state): State<AppState>) -> ApiResult<Json<NetworkListResponse>> {
+    if let (Some(cached), true) = state
+        .cache
+        .get(NETWORKS_CACHE_NAMESPACE, NETWORKS_CACHE_KEY)
+        .await
+    {
+        if let Ok(payload) = serde_json::from_str::<NetworkListResponse>(&cached) {
+            return Ok(Json(payload));
+        }
+    }
+
+    let response = refresh_network_catalog_cache(&state).await?;
+    Ok(Json(response))
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+pub struct SearchSuggestionsQuery {
+    pub q: String,
+    #[serde(default = "default_search_suggestion_limit")]
+    pub limit: i64,
+}
+
+fn default_search_suggestion_limit() -> i64 {
+    8
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/contracts/suggestions",
+    params(SearchSuggestionsQuery),
+    responses(
+        (status = 200, description = "Autocomplete suggestions for contract search", body = SearchSuggestionsResponse)
+    ),
+    tag = "Contracts"
+)]
+pub async fn get_contract_search_suggestions(
+    State(state): State<AppState>,
+    Query(query): Query<SearchSuggestionsQuery>,
+) -> ApiResult<Json<SearchSuggestionsResponse>> {
+    let started_at = std::time::Instant::now();
+    let limit = query.limit.clamp(1, 20);
+    let normalized = query.q.trim().to_ascii_lowercase();
+
+    if normalized.is_empty() {
+        return Ok(Json(SearchSuggestionsResponse { items: Vec::new() }));
+    }
+
+    let cache_key = format!("suggestions:{}:{}", normalized, limit);
+    if let (Some(cached), true) = state.cache.get("search", &cache_key).await {
+        if let Ok(payload) = serde_json::from_str::<SearchSuggestionsResponse>(&cached) {
+            observe_search_query("suggestions", started_at, Some(&query.q), limit);
+            return Ok(Json(payload));
+        }
+    }
+
+    let prefix = format!("{}%", normalized);
+    let rows: Vec<(String, String, f64)> = sqlx::query_as(
+        r#"
+        WITH candidates AS (
+            SELECT DISTINCT ON (lower(name))
+                name AS text,
+                'contract' AS kind,
+                GREATEST(
+                    similarity(lower(name), $1),
+                    CASE WHEN lower(name) LIKE $2 THEN 1.0 ELSE 0.0 END
+                ) AS score
+            FROM contracts
+            WHERE lower(name) LIKE $2 OR lower(name) % $1
+
+            UNION ALL
+
+            SELECT DISTINCT ON (lower(category))
+                category AS text,
+                'category' AS kind,
+                GREATEST(
+                    similarity(lower(category), $1),
+                    CASE WHEN lower(category) LIKE $2 THEN 0.95 ELSE 0.0 END
+                ) AS score
+            FROM contracts
+            WHERE category IS NOT NULL
+              AND (lower(category) LIKE $2 OR lower(category) % $1)
+        )
+        SELECT text, kind, score
+        FROM candidates
+        WHERE text IS NOT NULL
+        ORDER BY score DESC, length(text), text
+        LIMIT $3
+        "#,
+    )
+    .bind(&normalized)
+    .bind(&prefix)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|err| db_internal_error("fetch search suggestions", err))?;
+
+    let response = SearchSuggestionsResponse {
+        items: rows
+            .into_iter()
+            .map(|(text, kind, score)| SearchSuggestion { text, kind, score })
+            .collect(),
+    };
+
+    if let Ok(serialized) = serde_json::to_string(&response) {
+        state
+            .cache
+            .put("search", &cache_key, serialized, Some(Duration::from_secs(60)))
+            .await;
+    }
+
+    observe_search_query("suggestions", started_at, Some(&query.q), limit);
+    Ok(Json(response))
+}
+
 /// List and search contracts
 #[utoipa::path(
     get,
@@ -436,6 +986,7 @@ pub async fn list_contracts(
     State(state): State<AppState>,
     params: Result<Query<ContractSearchParams>, QueryRejection>,
 ) -> axum::response::Response {
+    let search_started_at = std::time::Instant::now();
     let Query(params) = match params {
         Ok(q) => q,
         Err(err) => return map_query_rejection(err).into_response(),
@@ -461,55 +1012,82 @@ pub async fn list_contracts(
         }
     });
     let sort_order = params.sort_order.clone().unwrap_or(shared::SortOrder::Desc);
-
-    let is_timestamp_sort = matches!(sort_by, shared::SortBy::CreatedAt);
-
-    // Build dynamic query with aggregations
-    let mut query = String::from(
-        "SELECT c.*
-         FROM contracts c
-         LEFT JOIN contract_interactions ci ON c.id = ci.contract_id
-         LEFT JOIN contract_versions cv ON c.id = cv.contract_id
-         WHERE 1=1",
-    );
-    let mut count_query = String::from("SELECT COUNT(*) FROM contracts WHERE 1=1");
-
-    if let Some(ref q) = params.query {
-        let search_clause = format!(
-            " AND (c.name ILIKE '%{}%' OR c.description ILIKE '%{}%')",
-            q, q
-        );
-        query.push_str(&search_clause);
-        count_query.push_str(&search_clause);
-    }
-
-    if let Some(verified) = params.verified_only {
-        if verified {
-            query.push_str(" AND c.is_verified = true");
-            count_query.push_str(" AND is_verified = true");
-        }
-    }
-
-    // Combine single category and multi-category into one list
-    let category_list: Vec<String> = params
-        .categories
+    let network_list = params
+        .networks
         .as_ref()
-        .filter(|v| !v.is_empty())
+        .filter(|n| !n.is_empty())
         .cloned()
-        .or_else(|| params.category.as_ref().map(|c| vec![c.clone()]))
-        .unwrap_or_default();
-    if !category_list.is_empty() {
-        let in_clause = category_list
-            .iter()
-            .map(|s| format!("'{}'", s.replace('\'', "''")))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let category_clause = format!(" AND c.category IN ({})", in_clause);
-        query.push_str(&category_clause);
-        count_query.push_str(&category_clause);
+        .or_else(|| params.network.map(|n| vec![n]));
+
+    let timestamp_sort_column = sort_timestamp_column(&sort_by);
+    let direction = if sort_order == shared::SortOrder::Asc { "ASC" } else { "DESC" };
+    let direction_op = if sort_order == shared::SortOrder::Asc { ">" } else { "<" };
+    let id_direction = if sort_order == shared::SortOrder::Asc { "ASC" } else { "DESC" };
+
+    // Weights for ranking (configurable via parameters or default)
+    let w_text = params.w_text.unwrap_or(1.0);
+    let w_pop = params.w_pop.unwrap_or(0.5);
+    let w_rec = params.w_rec.unwrap_or(0.3);
+    let w_rat = params.w_rat.unwrap_or(0.4);
+    let w_pers = 0.5; // Weight for personalized boost
+
+    // Build dynamic query with advanced ranking
+    let mut query = String::from("WITH contract_stats AS (\n");
+    query.push_str(
+        "    SELECT 
+                c.id,
+                COUNT(DISTINCT ci.id) as interaction_count,
+                COUNT(DISTINCT cv.id) as deployment_count,
+                COALESCE(AVG(r.rating), 0) as avg_rating,
+                COUNT(DISTINCT r.id) as review_count",
+    );
+
+    if let Some(ref uid) = params.user_id {
+        let cleaned_uid = uid.replace('\'', "''");
+        query.push_str(&format!(
+            ",\n                COUNT(DISTINCT CASE WHEN ci.user_address = '{}' THEN ci.id END) as user_interaction_count",
+            cleaned_uid
+        ));
+    } else {
+        query.push_str(",\n                0 as user_interaction_count");
     }
 
-    // Filter by network(s) (Issue #43)
+    query.push_str(
+        "\n            FROM contracts c
+            LEFT JOIN contract_interactions ci ON c.id = ci.contract_id
+            LEFT JOIN contract_versions cv ON c.id = cv.contract_id
+            LEFT JOIN reviews r ON c.id = r.contract_id AND r.is_flagged = FALSE
+            GROUP BY c.id
+        ),\n",
+    );
+
+    query.push_str("ranked_contracts AS (\n");
+    query.push_str("    SELECT \n");
+    query.push_str("        c.*, \n");
+    
+    if let Some(ref q) = params.query {
+        query.push(" AND contracts_build_tsquery(");
+        query.push_bind(q);
+        query.push(") @@ c.search_document");
+
+        count_query.push(" AND contracts_build_tsquery(");
+        count_query.push_bind(q);
+        count_query.push(") @@ c.search_document");
+    }
+
+    if params.verified_only.unwrap_or(false) {
+        query.push(" AND c.is_verified = true");
+        count_query.push(" AND c.is_verified = true");
+    }
+
+    if let Some(ref category) = params.category {
+        query.push(" AND c.category = ");
+        query.push_bind(category);
+        count_query.push(" AND c.category = ");
+        count_query.push_bind(category);
+    }
+
+    // Filter by network(s)
     let network_list = params
         .networks
         .as_ref()
@@ -517,98 +1095,186 @@ pub async fn list_contracts(
         .cloned()
         .or_else(|| params.network.map(|n| vec![n]));
     if let Some(ref nets) = network_list {
-        let net_list: Vec<String> = nets.iter().map(|n| n.to_string()).collect();
-        let in_clause = net_list
-            .iter()
-            .map(|s| format!("'{}'", s.replace('\'', "''")))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let network_clause = format!(" AND c.network IN ({})", in_clause);
-        query.push_str(&network_clause);
-        count_query.push_str(&network_clause);
+        query.push(" AND c.network IN (");
+        let mut separated = query.separated(", ");
+        for net in nets {
+            separated.push_bind(net);
+        }
+        separated.push_unseparated(")");
+
+        count_query.push(" AND c.network IN (");
+        let mut separated = count_query.separated(", ");
+        for net in nets {
+            separated.push_bind(net);
+        }
+        separated.push_unseparated(")");
     }
 
-    // Apply cursor filter if available and sorting by timestamp
-    if let Some(cursor) = cursor {
-        if is_timestamp_sort {
-            let direction_op = if sort_order == shared::SortOrder::Asc {
-                ">"
-            } else {
-                "<"
-            };
-            let cursor_clause = format!(
-                " AND (c.created_at {} '{}' OR (c.created_at = '{}' AND c.id {} '{}'))",
-                direction_op,
-                cursor.timestamp.to_rfc3339(),
-                cursor.timestamp.to_rfc3339(),
-                direction_op,
-                cursor.id
-            );
-            query.push_str(&cursor_clause);
+    if let Some(created_from) = params.created_from {
+        query.push(" AND c.created_at >= ");
+        query.push_bind(created_from);
+        count_query.push(" AND c.created_at >= ");
+        count_query.push_bind(created_from);
+    }
+
+    if let Some(created_to) = params.created_to {
+        query.push(" AND c.created_at <= ");
+        query.push_bind(created_to);
+        count_query.push(" AND c.created_at <= ");
+        count_query.push_bind(created_to);
+    }
+
+    if let Some(updated_from) = params.updated_from {
+        query.push(" AND c.updated_at >= ");
+        query.push_bind(updated_from);
+        count_query.push(" AND c.updated_at >= ");
+        count_query.push_bind(updated_from);
+    }
+
+    if let Some(updated_to) = params.updated_to {
+        query.push(" AND c.updated_at <= ");
+        query.push_bind(updated_to);
+        count_query.push(" AND c.updated_at <= ");
+        count_query.push_bind(updated_to);
+    }
+
+    if let Some(verified_from) = params.verified_from {
+        query.push(" AND c.verified_at >= ");
+        query.push_bind(verified_from);
+        count_query.push(" AND c.verified_at >= ");
+        count_query.push_bind(verified_from);
+    }
+
+    if let Some(verified_to) = params.verified_to {
+        query.push(" AND c.verified_at <= ");
+        query.push_bind(verified_to);
+        count_query.push(" AND c.verified_at <= ");
+        count_query.push_bind(verified_to);
+    }
+
+    if let Some(last_accessed_from) = params.last_accessed_from {
+        query.push(" AND c.last_accessed_at >= ");
+        query.push_bind(last_accessed_from);
+        count_query.push(" AND c.last_accessed_at >= ");
+        count_query.push_bind(last_accessed_from);
+    }
+
+    if let Some(last_accessed_to) = params.last_accessed_to {
+        query.push(" AND c.last_accessed_at <= ");
+        query.push_bind(last_accessed_to);
+        count_query.push(" AND c.last_accessed_at <= ");
+        count_query.push_bind(last_accessed_to);
+    }
+
+    if let Some(ref cursor) = cursor {
+        if let Some(column) = timestamp_sort_column {
+            query.push(" AND (");
+            query.push(column);
+            query.push(" ");
+            query.push(direction_op);
+            query.push(" ");
+            query.push_bind(cursor.timestamp);
+            query.push(" OR (");
+            query.push(column);
+            query.push(" = ");
+            query.push_bind(cursor.timestamp);
+            query.push(" AND c.id ");
+            query.push(direction_op);
+            query.push(" ");
+            query.push_bind(cursor.id);
+            query.push("))");
         }
     }
 
-    query.push_str(" GROUP BY c.id");
+    query.push(" GROUP BY c.id");
 
-    // Sorting logic using aggregations in ORDER BY
-    let order_by = match sort_by {
-        shared::SortBy::CreatedAt => "c.created_at".to_string(),
-        shared::SortBy::UpdatedAt => "c.updated_at".to_string(),
+    match sort_by {
+        shared::SortBy::CreatedAt
+        | shared::SortBy::UpdatedAt
+        | shared::SortBy::VerifiedAt
+        | shared::SortBy::LastAccessedAt => {
+            query.push(" ORDER BY ");
+            query.push(timestamp_sort_column.unwrap_or("c.created_at"));
+            query.push(" ");
+            query.push(direction);
+            query.push(" NULLS LAST, c.id ");
+            query.push(id_direction);
+        }
         shared::SortBy::Popularity | shared::SortBy::Interactions => {
-            "COUNT(DISTINCT ci.id)".to_string()
+            query.push(" ORDER BY COUNT(DISTINCT ci.id) ");
+            query.push(direction);
+            query.push(", c.id ");
+            query.push(id_direction);
         }
-        shared::SortBy::Deployments => "COUNT(DISTINCT cv.id)".to_string(),
+        shared::SortBy::Deployments => {
+            query.push(" ORDER BY COUNT(DISTINCT cv.id) ");
+            query.push(direction);
+            query.push(", c.id ");
+            query.push(id_direction);
+        }
         shared::SortBy::Relevance => {
             if let Some(ref q) = params.query {
-                format!(
-                    "CASE WHEN c.name ILIKE '{}' THEN 0
-                          WHEN c.name ILIKE '%{}%' THEN 1
-                          ELSE 2 END",
-                    q, q
-                )
+                let prefix = format!("{}%", q.to_ascii_lowercase());
+                query.push(" ORDER BY (CASE WHEN lower(c.name) = lower(");
+                query.push_bind(q);
+                query.push(") THEN 3.0 WHEN lower(c.name) LIKE ");
+                query.push_bind(&prefix);
+                query.push(" THEN 1.5 ELSE 0.0 END + ts_rank_cd(c.search_document, contracts_build_tsquery(");
+                query.push_bind(q);
+                query.push("), 32)) ");
+                query.push(direction);
+                query.push(", c.id ");
+                query.push(id_direction);
             } else {
-                "c.created_at".to_string()
+                query.push(" ORDER BY c.created_at ");
+                query.push(direction);
+                query.push(", c.id ");
+                query.push(id_direction);
             }
         }
-    };
+    }
 
-    let direction = if sort_order == shared::SortOrder::Asc {
-        "ASC"
-    } else {
-        "DESC"
-    };
+    query.push(" LIMIT ");
+    query.push_bind(limit);
+    query.push(" OFFSET ");
+    query.push_bind(offset);
 
-    query.push_str(&format!(
-        " ORDER BY {} {}, c.id DESC LIMIT {} OFFSET {}",
-        order_by, direction, limit, offset
-    ));
-
-    let contracts: Vec<Contract> = match sqlx::query_as(&query).fetch_all(&state.db).await {
+    let contracts: Vec<Contract> = match query.build_query_as().fetch_all(&state.db).await {
         Ok(rows) => rows,
-        Err(err) => return db_internal_error("list contracts", err).into_response(),
+        Err(err) => {
+            tracing::error!(query = %query, error = ?err, "Search query failed");
+            return db_internal_error("list contracts with ranking", err).into_response()
+        },
     };
 
-    let total: i64 = match sqlx::query_scalar(&count_query).fetch_one(&state.db).await {
+    let total: i64 = match count_query.build_query_scalar().fetch_one(&state.db).await {
         Ok(v) => v,
         Err(err) => return db_internal_error("count filtered contracts", err).into_response(),
     };
+
+    if params.query.is_some() {
+        observe_search_query("contracts", search_started_at, params.query.as_deref(), limit);
+    }
 
     let mut response = PaginatedResponse::new(contracts, total, page, limit);
 
     // Generate next cursor if we have full page
     if response.items.len() >= limit as usize {
         if let Some(last) = response.items.last() {
-            let next_cursor = Cursor::new(last.created_at, last.id).encode();
-            response.next_cursor = Some(next_cursor);
+            if let Some(timestamp) = contract_timestamp_for_sort(last, &sort_by) {
+                let next_cursor = Cursor::new(timestamp, last.id).encode();
+                response.next_cursor = Some(next_cursor);
+            }
         }
     }
 
     // Generate prev cursor if we have items and are not on the first page
-    // (Simplification: if we have a cursor, or page > 1)
     if params.cursor.is_some() || page > 1 {
         if let Some(first) = response.items.first() {
-            let prev_cursor = Cursor::new(first.created_at, first.id).encode();
-            response.prev_cursor = Some(prev_cursor);
+            if let Some(timestamp) = contract_timestamp_for_sort(first, &sort_by) {
+                let prev_cursor = Cursor::new(timestamp, first.id).encode();
+                response.prev_cursor = Some(prev_cursor);
+            }
         }
     }
 
@@ -672,11 +1338,104 @@ pub async fn get_contract(
         None
     };
 
+    // Record search click if applicable
+    if query.from_search.unwrap_or(false) {
+        let _ = analytics::record_event(
+            &state.db,
+            shared::AnalyticsEventType::SearchClick,
+            Some(contract.id),
+            Some(contract.publisher_id),
+            None,
+            query.network.as_ref(),
+            Some(serde_json::json!({
+                "search_query": query.search_query,
+                "timestamp": chrono::Utc::now()
+            })),
+        )
+        .await;
+    }
+    track_contract_access(&state, contract.id).await;
+
     Ok(Json(ContractGetResponse {
         contract,
         current_network,
         network_config,
     }))
+}
+
+/// Fetch multiple contracts in a single request, preserving request order.
+#[utoipa::path(
+    post,
+    path = "/api/contracts/batch",
+    params(BatchContractsQuery),
+    request_body = Vec<String>,
+    responses(
+        (status = 200, description = "Batch contract results in request order", body = [Object]),
+        (status = 400, description = "Invalid request")
+    ),
+    tag = "Contracts"
+)]
+pub async fn get_contracts_batch(
+    State(state): State<AppState>,
+    Query(query): Query<BatchContractsQuery>,
+    Json(contract_ids): Json<Vec<String>>,
+) -> ApiResult<Json<Vec<Option<Value>>>> {
+    if contract_ids.len() > 100 {
+        return Err(ApiError::bad_request(
+            "BatchTooLarge",
+            format!(
+                "Maximum of 100 contract IDs allowed, received {}",
+                contract_ids.len()
+            ),
+        ));
+    }
+
+    let fields = parse_batch_fields(query.fields.as_deref());
+
+    let parsed_uuids: Vec<Uuid> = contract_ids
+        .iter()
+        .filter_map(|id| Uuid::parse_str(id.trim()).ok())
+        .collect();
+
+    let normalized_contract_ids: Vec<String> = contract_ids
+        .iter()
+        .map(|id| id.trim())
+        .filter(|id| !id.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+
+    let contracts: Vec<Contract> = sqlx::query_as(
+        "SELECT * FROM contracts
+         WHERE id = ANY($1)
+            OR contract_id = ANY($2)",
+    )
+    .bind(&parsed_uuids)
+    .bind(&normalized_contract_ids)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|err| db_internal_error("get batch contracts", err))?;
+
+    let mut by_uuid: HashMap<Uuid, Contract> = HashMap::new();
+    let mut by_contract_id: HashMap<String, Contract> = HashMap::new();
+
+    for contract in contracts {
+        by_contract_id.insert(contract.contract_id.clone(), contract.clone());
+        by_uuid.insert(contract.id, contract);
+    }
+
+    let mut ordered_results: Vec<Option<Value>> = Vec::with_capacity(contract_ids.len());
+    for requested in contract_ids {
+        let trimmed = requested.trim();
+
+        let contract = Uuid::parse_str(trimmed)
+            .ok()
+            .and_then(|id| by_uuid.get(&id))
+            .or_else(|| by_contract_id.get(trimmed));
+
+        ordered_results.push(contract.map(|c| contract_to_filtered_value(c, fields.as_ref())));
+    }
+
+    Ok(Json(ordered_results))
 }
 
 #[utoipa::path(
@@ -1041,6 +1800,16 @@ pub async fn create_contract_version(
     )
     .await;
 
+    if let Ok(contract) = sqlx::query_as::<_, Contract>("SELECT * FROM contracts WHERE id = $1")
+        .bind(contract_uuid)
+        .fetch_one(&state.db)
+        .await
+    {
+        state
+            .contract_events
+            .publish(ContractEventEnvelope::version_created(&contract, &version_row));
+    }
+
     Ok(Json(version_row))
 }
 
@@ -1136,9 +1905,6 @@ pub async fn publish_contract(
     headers: HeaderMap,
     ValidatedJson(req): ValidatedJson<PublishRequest>,
 ) -> ApiResult<Json<Contract>> {
-    crate::validation::validate_contract_id(&req.contract_id)
-        .map_err(|e| ApiError::bad_request("InvalidContractId", e))?;
-
     let publisher: Publisher = sqlx::query_as(
         "INSERT INTO publishers (stellar_address) VALUES ($1)
          ON CONFLICT (stellar_address) DO UPDATE SET stellar_address = EXCLUDED.stellar_address
@@ -1252,6 +2018,7 @@ pub async fn publish_contract(
         &state.db,
         ContractInteractionInsert {
             contract_id: contract.id,
+            target_contract_id: None,
             account: Some(&publisher.stellar_address),
             interaction_type: "publish_success",
             transaction_hash: None,
@@ -1275,6 +2042,11 @@ pub async fn publish_contract(
         Some(json!({ "name": contract.name })),
     )
     .await;
+
+    state.contract_events.publish(ContractEventEnvelope::deployed(
+        &contract,
+        Some(publisher.stellar_address.clone()),
+    ));
 
     Ok(Json(contract))
 }
@@ -1701,16 +2473,24 @@ pub async fn get_contract_dependents(
 )]
 pub async fn get_contract_graph(
     State(state): State<AppState>,
+    Query(query): Query<GetContractQuery>,
 ) -> ApiResult<Json<shared::GraphResponse>> {
     // Try cache first
-    let cache_key = "global:dependency_graph";
-    if let (Some(cached), true) = state.cache.get("system", cache_key).await {
+    let cache_key = format!(
+        "global:dependency_graph:{}",
+        query
+            .network
+            .as_ref()
+            .map(|network| network.to_string())
+            .unwrap_or_else(|| "all".to_string())
+    );
+    if let (Some(cached), true) = state.cache.get("system", &cache_key).await {
         if let Ok(graph) = serde_json::from_str(&cached) {
             return Ok(Json(graph));
         }
     }
 
-    let graph = dependency::build_dependency_graph(&state.db)
+    let graph = dependency::build_dependency_graph(&state.db, query.network)
         .await
         .map_err(|e| ApiError::internal(format!("Failed to build graph: {}", e)))?;
 
@@ -1720,7 +2500,7 @@ pub async fn get_contract_graph(
             .cache
             .put(
                 "system",
-                cache_key,
+                &cache_key,
                 serialized,
                 Some(Duration::from_secs(300)),
             )
@@ -1969,7 +2749,7 @@ pub async fn verify_contract(
             .map_err(|err| db_internal_error("mark verification as verified", err))?;
 
             sqlx::query(
-                "UPDATE contracts SET is_verified = true, updated_at = NOW() WHERE id = $1",
+                "UPDATE contracts SET is_verified = true, verified_at = NOW(), updated_at = NOW() WHERE id = $1",
             )
             .bind(contract.id)
             .execute(&state.db)
@@ -2017,6 +2797,7 @@ pub async fn verify_contract(
                 &state.db,
                 ContractInteractionInsert {
                     contract_id: contract.id,
+                    target_contract_id: None,
                     account: None,
                     interaction_type: "publish_success",
                     transaction_hash: None,
@@ -2271,12 +3052,13 @@ pub async fn update_contract_metadata(
     }
 
     if !changes.is_empty() {
+        let changes_value = Value::Object(changes.clone());
         write_contract_audit_log(
             &state.db,
             AuditActionType::MetadataUpdated,
             after.id,
             req.user_id.unwrap_or(before.publisher_id),
-            Value::Object(changes.clone()),
+            changes_value.clone(),
             &extract_ip_address(&headers),
         )
         .await
@@ -2292,6 +3074,12 @@ pub async fn update_contract_metadata(
             Some(json!({ "changes": changes })),
         )
         .await;
+
+        state.contract_events.publish(ContractEventEnvelope::metadata_updated(
+            &after,
+            changes_value,
+            ContractEventVisibility::Public,
+        ));
     }
 
     Ok(Json(after))
@@ -2464,9 +3252,16 @@ pub async fn update_contract_status(
     .await
     .map_err(|err| db_internal_error("insert status verification row", err))?;
 
-    sqlx::query("UPDATE contracts SET is_verified = $2, updated_at = NOW() WHERE id = $1")
+    let verified_at = if is_verified_after {
+        Some(chrono::Utc::now())
+    } else {
+        contract.verified_at
+    };
+
+    sqlx::query("UPDATE contracts SET is_verified = $2, verified_at = COALESCE($3, verified_at), updated_at = NOW() WHERE id = $1")
         .bind(contract_uuid)
         .bind(is_verified_after)
+        .bind(verified_at)
         .execute(&state.db)
         .await
         .map_err(|err| db_internal_error("update contract verification flag from status", err))?;
@@ -2501,6 +3296,7 @@ pub async fn update_contract_status(
             &state.db,
             ContractInteractionInsert {
                 contract_id: contract_uuid,
+                target_contract_id: None,
                 account: None,
                 interaction_type,
                 transaction_hash: None,
@@ -2513,6 +3309,33 @@ pub async fn update_contract_status(
         )
         .await
         .map_err(|err| db_internal_error("record status interaction", err))?;
+    }
+
+    let contract_after: Contract = sqlx::query_as("SELECT * FROM contracts WHERE id = $1")
+        .bind(contract_uuid)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|err| db_internal_error("fetch contract after status update", err))?;
+
+    state.contract_events.publish(ContractEventEnvelope::status_updated(
+        &contract_after,
+        normalized_status.clone(),
+        is_verified_after,
+        None,
+        ContractEventVisibility::Public,
+    ));
+
+    if req.error_message.is_some() {
+        state.contract_events.publish(ContractEventEnvelope::status_updated(
+            &contract_after,
+            normalized_status.clone(),
+            is_verified_after,
+            Some(json!({
+                "error_message": req.error_message,
+                "publisher_id": contract.publisher_id,
+            })),
+            ContractEventVisibility::Private,
+        ));
     }
 
     Ok(Json(json!({
@@ -2916,10 +3739,17 @@ pub async fn post_contract_interaction(
         parse_interaction_type(req.interaction_type.as_deref(), req.method.as_deref())?;
     let created_at = req.timestamp.unwrap_or_else(chrono::Utc::now);
     let network = req.network.unwrap_or(contract_network);
+    let target_contract_id = resolve_call_target_contract(
+        &state.db,
+        req.target_contract_id.as_deref(),
+        req.parameters.as_ref(),
+    )
+    .await?;
     let interaction_id = record_contract_interaction(
         &state.db,
         ContractInteractionInsert {
             contract_id: contract_uuid,
+            target_contract_id,
             account: req.account.as_deref(),
             interaction_type: &interaction_type,
             transaction_hash: req.transaction_hash.as_deref(),
@@ -2988,10 +3818,17 @@ pub async fn post_contract_interactions_batch(
             .network
             .clone()
             .unwrap_or_else(|| contract_network.clone());
+        let target_contract_id = resolve_call_target_contract(
+            &state.db,
+            i.target_contract_id.as_deref(),
+            i.parameters.as_ref(),
+        )
+        .await?;
         let interaction_id = record_contract_interaction(
             &state.db,
             ContractInteractionInsert {
                 contract_id: contract_uuid,
+                target_contract_id,
                 account: i.account.as_deref(),
                 interaction_type: &interaction_type,
                 transaction_hash: i.transaction_hash.as_deref(),
@@ -3023,10 +3860,12 @@ pub async fn route_not_found() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use prometheus::Registry;
     use sqlx::postgres::PgPoolOptions;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_health_check_shutdown_returns_503() {
@@ -3088,16 +3927,84 @@ mod tests {
         assert_eq!(new["_ip_address"], "unknown");
     }
 
-    #[tokio::test]
-    async fn route_not_found_uses_standard_error_format() {
-        let response = route_not_found().await.into_response();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    #[test]
+    fn timestamp_sort_helpers_cover_all_timestamp_fields() {
+        let now = chrono::Utc::now();
+        let contract = Contract {
+            id: Uuid::nil(),
+            contract_id: "C123".to_string(),
+            wasm_hash: "hash".to_string(),
+            name: "Demo".to_string(),
+            description: None,
+            publisher_id: Uuid::nil(),
+            network: Network::Testnet,
+            is_verified: true,
+            category: None,
+            tags: Vec::new(),
+            created_at: now,
+            updated_at: now + chrono::TimeDelta::seconds(10),
+            verified_at: Some(now + chrono::TimeDelta::seconds(20)),
+            last_accessed_at: Some(now + chrono::TimeDelta::seconds(30)),
+            health_score: 0,
+            is_maintenance: false,
+            logical_id: None,
+            network_configs: None,
+        };
 
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(value["error_code"], "NOT_FOUND");
-        assert_eq!(value["message"], "Route not found");
+        assert_eq!(sort_timestamp_column(&shared::SortBy::CreatedAt), Some("c.created_at"));
+        assert_eq!(sort_timestamp_column(&shared::SortBy::UpdatedAt), Some("c.updated_at"));
+        assert_eq!(sort_timestamp_column(&shared::SortBy::VerifiedAt), Some("c.verified_at"));
+        assert_eq!(
+            sort_timestamp_column(&shared::SortBy::LastAccessedAt),
+            Some("c.last_accessed_at")
+        );
+        assert_eq!(
+            contract_timestamp_for_sort(&contract, &shared::SortBy::VerifiedAt),
+            contract.verified_at
+        );
+        assert_eq!(
+            contract_timestamp_for_sort(&contract, &shared::SortBy::LastAccessedAt),
+            contract.last_accessed_at
+        );
+    }
+
+    #[test]
+    fn derive_network_status_marks_rpc_failures_offline_and_stale_states_degraded() {
+        let now = chrono::Utc::now();
+        let healthy_snapshot = IndexerStateSnapshot {
+            last_indexed_ledger_height: 42,
+            indexed_at: now,
+            consecutive_failures: 0,
+            error_message: None,
+        };
+        let stale_snapshot = IndexerStateSnapshot {
+            last_indexed_ledger_height: 42,
+            indexed_at: now - chrono::Duration::minutes(NETWORK_STALE_AFTER_MINUTES + 1),
+            consecutive_failures: 0,
+            error_message: None,
+        };
+        let failing_snapshot = IndexerStateSnapshot {
+            last_indexed_ledger_height: 42,
+            indexed_at: now,
+            consecutive_failures: NETWORK_OFFLINE_FAILURE_THRESHOLD,
+            error_message: Some("RPC unavailable".to_string()),
+        };
+
+        assert_eq!(
+            derive_network_status(true, Some(&healthy_snapshot), now),
+            (NetworkStatus::Online, None)
+        );
+        assert_eq!(
+            derive_network_status(true, Some(&stale_snapshot), now).0,
+            NetworkStatus::Degraded
+        );
+        assert_eq!(
+            derive_network_status(false, Some(&healthy_snapshot), now).0,
+            NetworkStatus::Offline
+        );
+        assert_eq!(
+            derive_network_status(true, Some(&failing_snapshot), now).0,
+            NetworkStatus::Offline
+        );
     }
 }

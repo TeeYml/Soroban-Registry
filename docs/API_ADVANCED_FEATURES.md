@@ -39,6 +39,49 @@ Response shape:
 
 ---
 
+## Network Metadata
+
+Use the networks endpoint to discover supported environments and populate client-side network selectors.
+
+### GET /networks
+
+Returns all supported deployment networks with RPC URLs, explorer links, and current status indicators.
+
+**Response:**
+```json
+{
+  "cached_at": "2026-03-25T10:15:00Z",
+  "networks": [
+    {
+      "id": "mainnet",
+      "name": "Stellar Mainnet",
+      "network_type": "mainnet",
+      "status": "online",
+      "endpoints": {
+        "rpc_url": "https://rpc-mainnet.stellar.org",
+        "health_url": "https://rpc-mainnet.stellar.org/health",
+        "explorer_url": "https://stellar.expert/explorer/public"
+      },
+      "last_checked_at": "2026-03-25T10:15:00Z",
+      "last_indexed_ledger_height": 52345678,
+      "consecutive_failures": 0
+    }
+  ]
+}
+```
+
+**Status Values:**
+- `online` - RPC health check is passing and the indexer has no known issues
+- `degraded` - RPC is reachable but indexing is stale or reporting failures
+- `offline` - RPC health checks are failing or the network is in a sustained failure state
+
+**Use Cases:**
+- Populate frontend network selectors dynamically
+- Show environment-specific explorer links
+- Gate features when a network is degraded or offline
+
+---
+
 ## Batch Operations
 
 Batch operations allow you to perform multiple actions in a single API call, reducing network overhead and improving performance.
@@ -261,8 +304,14 @@ GET /api/contracts?network=mainnet&verified=true&publisher=pub_abc123&category=d
 ### Range Filters
 
 ```http
-# Contracts published between dates
-GET /api/contracts?published_after=2026-01-01&published_before=2026-02-01
+# Contracts created between dates
+GET /api/contracts?created_from=2026-01-01T00:00:00Z&created_to=2026-02-01T00:00:00Z
+
+# Contracts modified in the last 7 days
+GET /api/contracts?updated_from=2026-03-18T00:00:00Z
+
+# Contracts verified during a date window
+GET /api/contracts?verified_from=2026-03-01T00:00:00Z&verified_to=2026-03-25T23:59:59Z
 
 # Contracts with interaction count in range
 GET /api/contracts?interactions_min=1000&interactions_max=10000
@@ -344,11 +393,17 @@ Order results by one or more fields.
 ### Single Field Sort
 
 ```http
-# Sort by publication date (newest first)
-GET /api/contracts?sort_by=published_at&sort_order=desc
+# Sort by creation date (newest first)
+GET /api/contracts?sort_by=createdat&sort_order=desc
 
-# Sort by name (A-Z)
-GET /api/contracts?sort_by=name&sort_order=asc
+# Sort by most recently updated
+GET /api/contracts?sort_by=updatedat&sort_order=desc
+
+# Sort by latest verification timestamp
+GET /api/contracts?sort_by=verifiedat&sort_order=desc
+
+# Sort by most recent contract view
+GET /api/contracts?sort_by=lastaccessedat&sort_order=desc
 ```
 
 **Sort Order:**
@@ -366,13 +421,14 @@ GET /api/contracts?sort_by=verified,interactions&sort_order=desc,desc
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Contract name (alphabetical) |
-| `published_at` | datetime | Publication date |
-| `updated_at` | datetime | Last update date |
+| `createdat` | datetime | Contract creation timestamp |
+| `updatedat` | datetime | Last update timestamp |
+| `verifiedat` | datetime | Most recent successful verification timestamp |
+| `lastaccessedat` | datetime | Most recent contract detail view timestamp |
 | `interactions` | integer | Total interaction count |
-| `popularity_score` | float | Calculated popularity (0-100) |
-| `verified` | boolean | Verification status |
-| `health_score` | float | Contract health score (0-100) |
+| `popularity` | integer | Interaction-driven popularity ordering |
+| `deployments` | integer | Version/deployment count ordering |
+| `relevance` | integer | Search relevance ordering when `query` is present |
 
 ### Relevance Sorting (Search)
 
@@ -508,77 +564,70 @@ print(f'Fetched {len(all_contracts)} contracts')
 
 ## Full-Text Search
 
-Powerful search capabilities with relevance ranking.
+Contract search is powered by PostgreSQL full-text indexes over `name`, `category`, and `description`.
 
 ### Basic Search
 
 ```http
-GET /api/contracts/search?query=token transfer
+GET /api/contracts?query=token transfer
 ```
 
-### Advanced Search
+### Advanced Search Syntax
+
+The `query` parameter supports operator-aware parsing via PostgreSQL web-style search:
 
 ```http
-POST /api/contracts/search
-Content-Type: application/json
+# Exact phrase
+GET /api/contracts?query="token factory"
 
-{
-  "query": "stellar token",
-  "fields": ["name", "description", "tags"],
-  "filters": {
-    "network": "mainnet",
-    "verified": true
-  },
-  "sort": {
-    "by": "_score",
-    "order": "desc"
-  },
-  "limit": 20,
-  "highlight": true
-}
+# Required and excluded terms
+GET /api/contracts?query=token -deprecated
+
+# Phrase with additional required term
+GET /api/contracts?query="liquidity pool" soroban
+```
+
+**Supported Patterns:**
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| Phrase | Exact word sequence | `"token contract"` |
+| Required terms | Terms must appear | `stellar token` |
+| Excluded terms | Terms must not appear | `token -legacy` |
+| Prefix term | Prefix match for a token | `token*` |
+
+### Relevance Ranking
+
+When `sort_by=relevance` or when `query` is present without an explicit sort, matches are ranked by:
+
+- Weighted full-text score across `name`, `category`, and `description`
+- Exact contract name matches boosted above partial matches
+- Prefix name matches boosted above generic body matches
+
+### Search Suggestions
+
+Use the suggestions endpoint to power autocomplete UIs:
+
+```http
+GET /api/contracts/suggestions?q=tok&limit=8
 ```
 
 **Response:**
 ```json
 {
-  "results": [
-    {
-      "contract_id": "CDLZFC3...",
-      "name": "Stellar Token Contract",
-      "description": "A token implementation...",
-      "score": 8.5,
-      "highlights": {
-        "name": ["<em>Stellar</em> <em>Token</em> Contract"],
-        "description": ["A <em>token</em> implementation for <em>Stellar</em>"]
-      }
-    }
-  ],
-  "total": 42,
-  "took_ms": 23
+  "items": [
+    { "text": "Token Factory", "kind": "contract", "score": 1.0 },
+    { "text": "Token", "kind": "category", "score": 0.82 }
+  ]
 }
 ```
 
-**Search Features:**
+### Performance and Monitoring
 
-| Feature | Description | Example |
-|---------|-------------|---------|
-| **Phrase search** | Exact phrase | `"token contract"` |
-| **Wildcards** | Pattern matching | `token*` matches token, tokens |
-| **Boolean** | AND/OR/NOT | `token AND (stellar OR soroban)` |
-| **Fuzzy** | Typo tolerance | `tokn~` matches token |
-| **Boost** | Field importance | `name:token^2 description:token` |
-
-**Relevance Scoring:**
-
-Results are ranked by relevance (0-10):
-- Higher scores = better matches
-- Considers term frequency, field length, field boosts
-- Verified contracts get slight boost (+0.5)
-
-**Performance:**
-- Average search: < 50ms
-- Complex queries: < 200ms
-- Supports ~1M+ contracts efficiently
+- Search uses generated `tsvector` columns plus GIN indexes for low-latency ranking
+- Autocomplete uses prefix and trigram indexes on contract names and categories
+- Search requests slower than 200ms are logged and counted in Prometheus metrics
+- Suggestion responses are cached briefly to keep selector/autocomplete latency low
 
 ---
 

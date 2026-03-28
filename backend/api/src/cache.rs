@@ -49,6 +49,7 @@ pub struct CacheLayer {
     pub abi_cache: MokaCache<String, String>,
     pub verification_cache: MokaCache<String, String>,
     pub generic_cache: MokaCache<String, String>,
+    pub contract_access_cache: MokaCache<String, bool>,
     config: CacheConfig,
 }
 
@@ -76,10 +77,16 @@ impl CacheLayer {
             .time_to_live(Duration::from_secs(3600))
             .build();
 
+        let contract_access_cache = MokaCache::builder()
+            .max_capacity(config.max_capacity)
+            .time_to_live(Duration::from_secs(60))
+            .build();
+
         Self {
             abi_cache,
             verification_cache,
             generic_cache,
+            contract_access_cache,
             config,
         }
     }
@@ -183,6 +190,21 @@ impl CacheLayer {
 
         let namespaced_key = format!("{}:{}", ns, key);
         self.generic_cache.invalidate(&namespaced_key).await;
+    }
+
+    pub async fn should_refresh_contract_access(&self, contract_id: &str) -> bool {
+        if !self.config.enabled {
+            return true;
+        }
+
+        if self.contract_access_cache.get(contract_id).await.is_some() {
+            return false;
+        }
+
+        self.contract_access_cache
+            .insert(contract_id.to_string(), true)
+            .await;
+        true
     }
 
     /// Starts an asynchronous startup warmup task querying the top 100 contracts
@@ -371,5 +393,17 @@ mod tests {
 
         assert!(val.is_none());
         assert!(!hit);
+    }
+
+    #[tokio::test]
+    async fn test_contract_access_refresh_is_debounced() {
+        let cache = CacheLayer::new(CacheConfig {
+            enabled: true,
+            max_capacity: 100,
+        });
+
+        assert!(cache.should_refresh_contract_access("contract-1").await);
+        assert!(!cache.should_refresh_contract_access("contract-1").await);
+        assert!(cache.should_refresh_contract_access("contract-2").await);
     }
 }

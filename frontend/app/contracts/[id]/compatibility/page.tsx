@@ -9,8 +9,31 @@ import { ArrowLeft, GitCompare, Loader2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 
 export default function CompatibilityPage() {
-    const params = useParams();
-    const contractId = params.id as string;
+    const params = useParams<{ id?: string | string[] }>() ?? {};
+    const idParam = params.id;
+    const contractId = Array.isArray(idParam) ? idParam[0] : idParam;
+
+    if (!contractId) {
+        return (
+            <div className="min-h-screen bg-background text-foreground">
+                <Navbar />
+                <div className="max-w-4xl mx-auto px-4 py-10">
+                    <div className="rounded-2xl border border-border bg-card p-6">
+                        <div className="text-sm font-semibold text-foreground">Missing contract id</div>
+                        <div className="mt-1 text-sm text-muted-foreground">Open this page from a contract details view.</div>
+                        <div className="mt-4">
+                            <Link
+                                href="/contracts"
+                                className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                            >
+                                Browse contracts
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const { data: contract } = useQuery({
         queryKey: ['contract', contractId],

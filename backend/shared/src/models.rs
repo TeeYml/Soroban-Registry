@@ -23,6 +23,8 @@ pub struct Contract {
     pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub verified_at: Option<DateTime<Utc>>,
+    pub last_accessed_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub health_score: i32,
     #[serde(default)]
@@ -33,6 +35,9 @@ pub struct Contract {
     /// Per-network config: { "mainnet": { contract_id, is_verified, min_version, max_version }, ... }
     #[serde(default)]
     pub network_configs: Option<serde_json::Value>,
+    /// Search relevance score (calculated at runtime)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relevance_score: Option<f64>,
 }
 
 /// Response for GET /contracts/:id with optional network-specific slice (Issue #43)
@@ -57,6 +62,46 @@ pub struct NetworkConfig {
     pub min_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum NetworkStatus {
+    Online,
+    Offline,
+    Degraded,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct NetworkEndpoints {
+    pub rpc_url: String,
+    pub health_url: String,
+    pub explorer_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub friendbot_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct NetworkInfo {
+    pub id: String,
+    pub name: String,
+    pub network_type: Network,
+    pub status: NetworkStatus,
+    pub endpoints: NetworkEndpoints,
+    pub last_checked_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_indexed_ledger_height: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_indexed_at: Option<DateTime<Utc>>,
+    pub consecutive_failures: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct NetworkListResponse {
+    pub networks: Vec<NetworkInfo>,
+    pub cached_at: DateTime<Utc>,
 }
 
 /// Network where the contract is deployed
@@ -186,6 +231,10 @@ pub struct GraphEdge {
     pub source: Uuid,
     pub target: Uuid,
     pub dependency_type: String,
+    pub call_frequency: Option<i64>,
+    pub call_volume: Option<i64>,
+    pub is_estimated: bool,
+    pub is_circular: bool,
 }
 
 /// Full graph response
@@ -212,7 +261,7 @@ pub struct PublishRequest {
     pub dependencies: Vec<DependencyDeclaration>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct UpdateContractMetadataRequest {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -221,13 +270,13 @@ pub struct UpdateContractMetadataRequest {
     pub user_id: Option<Uuid>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ChangePublisherRequest {
     pub publisher_address: String,
     pub user_id: Option<Uuid>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct UpdateContractStatusRequest {
     pub status: String,
     pub error_message: Option<String>,
@@ -359,6 +408,8 @@ pub struct VerifyRequest {
 pub enum SortBy {
     CreatedAt,
     UpdatedAt,
+    VerifiedAt,
+    LastAccessedAt,
     Popularity,
     Deployments,
     Interactions,
@@ -392,6 +443,26 @@ pub struct ContractSearchParams {
     pub sort_by: Option<SortBy>,
     pub sort_order: Option<SortOrder>,
     pub cursor: Option<String>,
+    pub created_from: Option<DateTime<Utc>>,
+    pub created_to: Option<DateTime<Utc>>,
+    pub updated_from: Option<DateTime<Utc>>,
+    pub updated_to: Option<DateTime<Utc>>,
+    pub verified_from: Option<DateTime<Utc>>,
+    pub verified_to: Option<DateTime<Utc>>,
+    pub last_accessed_from: Option<DateTime<Utc>>,
+    pub last_accessed_to: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SearchSuggestion {
+    pub text: String,
+    pub kind: String,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SearchSuggestionsResponse {
+    pub items: Vec<SearchSuggestion>,
 }
 
 /// Pagination params for contract versions (limit/offset style)
@@ -515,6 +586,7 @@ pub struct CreateInteractionRequest {
     pub interaction_type: Option<String>,
     pub method: Option<String>,
     pub transaction_hash: Option<String>,
+    pub target_contract_id: Option<String>,
     pub parameters: Option<serde_json::Value>,
     pub return_value: Option<serde_json::Value>,
     pub timestamp: Option<DateTime<Utc>>,
@@ -538,14 +610,14 @@ pub struct InteractionsListResponse {
     pub prev_cursor: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct InteractionTimeSeriesPoint {
     pub date: chrono::NaiveDate,
     pub interaction_type: String,
     pub count: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct InteractionTimeSeriesResponse {
     pub contract_id: Uuid,
     pub days: i64,
@@ -1035,6 +1107,7 @@ pub enum AnalyticsEventType {
     VersionCreated,
     ContractUpdated,
     PublisherCreated,
+    SearchClick,
 }
 
 impl std::fmt::Display for AnalyticsEventType {
@@ -1046,6 +1119,7 @@ impl std::fmt::Display for AnalyticsEventType {
             Self::VersionCreated => write!(f, "version_created"),
             Self::ContractUpdated => write!(f, "contract_updated"),
             Self::PublisherCreated => write!(f, "publisher_created"),
+            Self::SearchClick => write!(f, "search_click"),
         }
     }
 }
@@ -1162,7 +1236,7 @@ pub struct HealthCheckRequest {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Query parameters for the trending contracts endpoint
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema, utoipa::IntoParams)]
 pub struct TrendingParams {
     /// Max results to return (default 10, max 50)
     pub limit: Option<i64>,
@@ -1807,6 +1881,30 @@ impl ContractHealth {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ADVANCED CONTRACT DEPENDENCIES (issue #417)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependencyNode {
+    pub contract_id: String,
+    pub resolved_id: Option<Uuid>,
+    pub name: Option<String>,
+    pub call_volume: i32,
+    pub status: String,
+    pub is_circular: bool,
+    pub dependencies: Vec<DependencyNode>,
+    pub visualization_hints: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependencyResponse {
+    pub root: DependencyNode,
+    pub total_dependencies: usize,
+    pub max_depth: usize,
+    pub has_circular: bool,
+}
+
 // Backup and disaster recovery types
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ContractBackup {
@@ -2044,4 +2142,34 @@ pub struct ContractChangelogEntry {
 pub struct ContractChangelogResponse {
     pub contract_id: Uuid,
     pub entries: Vec<ContractChangelogEntry>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANALYTICS DASHBOARD (issue #430)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct CategoryCount {
+    pub category: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct NetworkCount {
+    pub network: Network,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct DeploymentTrend {
+    pub date: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct DashboardAnalyticsResponse {
+    pub category_distribution: Vec<CategoryCount>,
+    pub network_usage: Vec<NetworkCount>,
+    pub deployment_trends: Vec<DeploymentTrend>,
+    pub recent_additions: Vec<Contract>,
 }

@@ -8,6 +8,7 @@ import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { AlertCircle, Sparkles, ExternalLink, X } from 'lucide-react';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import type { DependencyGraphHandle } from '@/components/DependencyGraph';
+import { useRouter } from 'next/navigation';
 
 // Generate synthetic demo data for testing at scale
 function generateDemoData(nodeCount: number): { nodes: GraphNode[]; edges: GraphEdge[] } {
@@ -42,19 +43,42 @@ function generateDemoData(nodeCount: number): { nodes: GraphNode[]; edges: Graph
     const edges: GraphEdge[] = [];
     const edgeCount = Math.min(nodeCount * 2, nodeCount * (nodeCount - 1) / 2);
     const edgeSet = new Set<string>();
+
+    const pushEdge = (source: number, target: number, isCircular = false) => {
+        if (source === target) return;
+        const key = `${source}-${target}`;
+        if (edgeSet.has(key)) return;
+        edgeSet.add(key);
+        const callFrequency = 1 + Math.floor(Math.random() * 250);
+        const isEstimated = Math.random() > 0.6;
+        edges.push({
+            source: nodes[source].id,
+            target: nodes[target].id,
+            dependency_type: Math.random() > 0.7 ? 'imports' : 'calls',
+            call_frequency: callFrequency,
+            call_volume: callFrequency * (1 + Math.floor(Math.random() * 8)),
+            is_estimated: isEstimated,
+            is_circular: isCircular,
+        });
+    };
+
     for (let i = 0; i < edgeCount; i++) {
         // Bias towards lower-index nodes as targets to create hub nodes
         const sourceIdx = Math.floor(Math.random() * nodeCount);
         const targetIdx = Math.floor(Math.pow(Math.random(), 2) * nodeCount);
-        if (sourceIdx === targetIdx) continue;
-        const key = `${sourceIdx}-${targetIdx}`;
-        if (edgeSet.has(key)) continue;
-        edgeSet.add(key);
-        edges.push({
-            source: nodes[sourceIdx].id,
-            target: nodes[targetIdx].id,
-            dependency_type: Math.random() > 0.7 ? 'imports' : 'calls',
-        });
+        pushEdge(sourceIdx, targetIdx);
+    }
+
+    // Inject a few explicit cycles to exercise cycle highlighting.
+    const cycleGroups = Math.min(8, Math.floor(nodeCount / 10));
+    for (let i = 0; i < cycleGroups; i++) {
+        const a = i * 3;
+        const b = a + 1;
+        const c = a + 2;
+        if (c >= nodeCount) break;
+        pushEdge(a, b, true);
+        pushEdge(b, c, true);
+        pushEdge(c, a, true);
     }
 
     return { nodes, edges };
@@ -62,12 +86,16 @@ function generateDemoData(nodeCount: number): { nodes: GraphNode[]; edges: Graph
 
 export function GraphContent() {
     const [networkFilter, setNetworkFilter] = useState<string>('');
+    const [dependencyTypeFilter, setDependencyTypeFilter] = useState<string>('');
+    const [showCyclesOnly, setShowCyclesOnly] = useState(false);
+    const [minCallFrequency, setMinCallFrequency] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
     const [demoMode, setDemoMode] = useState(false);
     const [demoNodeCount, setDemoNodeCount] = useState(200);
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
     const [searchMatchIndex, setSearchMatchIndex] = useState(0);
     const graphRef = useRef<DependencyGraphHandle | null>(null);
+    const router = useRouter();
     const { logEvent } = useAnalytics();
 
     const { data: apiData, isLoading, error } = useQuery({
@@ -114,14 +142,42 @@ export function GraphContent() {
     const graphData = demoMode ? filteredDemoData : apiData;
 
     // Safe nodes/edges (API may return missing or non-array values)
-    const nodes = useMemo(
+    const rawNodes = useMemo(
         () => (graphData && Array.isArray(graphData.nodes) ? graphData.nodes : []),
         [graphData]
     );
-    const edges = useMemo(
+    const rawEdges = useMemo(
         () => (graphData && Array.isArray(graphData.edges) ? graphData.edges : []),
         [graphData]
     );
+
+    const filteredGraph = useMemo(() => {
+        const edgeFiltered = rawEdges.filter((edge) => {
+            if (dependencyTypeFilter && edge.dependency_type !== dependencyTypeFilter) return false;
+            if (showCyclesOnly && !edge.is_circular) return false;
+            if (minCallFrequency > 0 && (edge.call_frequency ?? 0) < minCallFrequency) return false;
+            return true;
+        });
+
+        const usesEdgeFocusedFilter = showCyclesOnly || Boolean(dependencyTypeFilter) || minCallFrequency > 0;
+        if (!usesEdgeFocusedFilter) {
+            return { nodes: rawNodes, edges: edgeFiltered };
+        }
+
+        const nodeIds = new Set<string>();
+        for (const edge of edgeFiltered) {
+            nodeIds.add(edge.source);
+            nodeIds.add(edge.target);
+        }
+
+        return {
+            nodes: rawNodes.filter((node) => nodeIds.has(node.id)),
+            edges: edgeFiltered,
+        };
+    }, [rawNodes, rawEdges, dependencyTypeFilter, showCyclesOnly, minCallFrequency]);
+
+    const nodes = filteredGraph.nodes;
+    const edges = filteredGraph.edges;
 
     // Compute dependent counts (how many nodes depend on this one = in-edges)
     const dependentCounts = useMemo(() => {
@@ -161,8 +217,13 @@ export function GraphContent() {
     }, [nodes]);
 
     const handleNodeClick = useCallback((node: GraphNode | null) => {
-        setSelectedNode(node);
-    }, []);
+        if (!node) {
+            setSelectedNode(null);
+            return;
+        }
+
+        router.push(`/contracts/${node.contract_id}`);
+    }, [router]);
 
     // Search match navigation
     const searchMatches = useMemo(() => {
@@ -192,6 +253,11 @@ export function GraphContent() {
     const handleNextMatch = useCallback(() => {
         setSearchMatchIndex((i) => (i + 1) % searchMatches.length);
     }, [searchMatches.length]);
+
+    const cyclicEdgeCount = useMemo(
+        () => edges.filter((edge) => edge.is_circular).length,
+        [edges]
+    );
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -297,12 +363,19 @@ export function GraphContent() {
                 onSearchChange={setSearchQuery}
                 networkFilter={networkFilter}
                 onNetworkFilterChange={setNetworkFilter}
+                dependencyTypeFilter={dependencyTypeFilter}
+                onDependencyTypeFilterChange={setDependencyTypeFilter}
+                showCyclesOnly={showCyclesOnly}
+                onShowCyclesOnlyChange={setShowCyclesOnly}
+                minCallFrequency={minCallFrequency}
+                onMinCallFrequencyChange={setMinCallFrequency}
                 demoMode={demoMode}
                 onDemoModeChange={setDemoMode}
                 demoNodeCount={demoNodeCount}
                 onDemoNodeCountChange={setDemoNodeCount}
                 totalNodes={nodes.length}
                 totalEdges={edges.length}
+                cyclicEdgeCount={cyclicEdgeCount}
                 criticalCount={criticalCount}
                 searchMatchCount={searchMatches.length}
                 searchMatchIndex={searchMatchIndex}

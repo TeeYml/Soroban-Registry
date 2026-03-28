@@ -13,6 +13,7 @@ use utoipa::OpenApi;
         handlers::health_check,
         handlers::get_stats,
         handlers::list_contracts,
+        handlers::get_contracts_batch,
         handlers::get_contract,
         handlers::get_contract_versions,
         handlers::create_contract_version,

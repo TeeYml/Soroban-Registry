@@ -155,31 +155,6 @@ function toPngDataUrl(
   return canvas.toDataURL('image/png');
 }
 
-function averageColorFromRgba(pixels: Uint8ClampedArray): string {
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  let weight = 0;
-
-  for (let i = 0; i < pixels.length; i += 4) {
-    const alpha = pixels[i + 3] / 255;
-    if (alpha <= 0) continue;
-    r += pixels[i] * alpha;
-    g += pixels[i + 1] * alpha;
-    b += pixels[i + 2] * alpha;
-    weight += alpha;
-  }
-
-  if (weight === 0) {
-    return '#e5e7eb';
-  }
-
-  const rr = Math.round(r / weight);
-  const gg = Math.round(g / weight);
-  const bb = Math.round(b / weight);
-  return `#${[rr, gg, bb].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-}
-
 /**
  * Decodes a blurhash into a PNG data URL for `next/image` blur placeholders.
  * Falls back to a solid-color SVG if decoding/canvas is unavailable.

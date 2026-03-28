@@ -58,7 +58,7 @@ export default function TagAutocomplete({
         const tags = await getTags(normalizedQuery);
         setResults(tags);
         setIsOpen(true);
-      } catch (_error) {
+      } catch {
         setResults([]);
       } finally {
         setLoading(false);

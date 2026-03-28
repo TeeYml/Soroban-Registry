@@ -6,6 +6,7 @@ mod commands;
 mod config;
 mod conversions;
 mod coverage;
+mod dashboard;
 mod events;
 mod export;
 mod formal_verification;
@@ -124,6 +125,19 @@ pub enum Commands {
         /// Output results as machine-readable JSON
         #[arg(long)]
         json: bool,
+    },
+
+    /// Launch an interactive, real-time terminal dashboard
+    Dashboard {
+        /// Minimum interval between UI renders (milliseconds)
+        #[arg(long, default_value = "100")]
+        refresh_rate: u64,
+        /// Filter by contract category
+        #[arg(long)]
+        category: Option<String>,
+        /// WebSocket URL (or set SOROBAN_REGISTRY_WS_URL)
+        #[arg(long, env = "SOROBAN_REGISTRY_WS_URL")]
+        ws_url: Option<String>,
     },
 
     /// Detect breaking changes between contract versions
@@ -974,6 +988,25 @@ async fn main() -> Result<()> {
         Commands::List { limit, json } => {
             log::debug!("Command: list | limit={}", limit);
             commands::list(&cli.api_url, limit, network, json).await?;
+        }
+        Commands::Dashboard {
+            refresh_rate,
+            category,
+            ws_url,
+        } => {
+            log::debug!(
+                "Command: dashboard | refresh_rate={} network={:?} category={:?}",
+                refresh_rate,
+                cli.network,
+                category
+            );
+            dashboard::run_dashboard(dashboard::DashboardParams {
+                refresh_rate_ms: refresh_rate,
+                network: cli.network.clone(),
+                category,
+                ws_url,
+            })
+            .await?;
         }
         Commands::BreakingChanges { old_id, new_id, json } => {
             log::debug!("Command: breaking-changes | old={} new={}", old_id, new_id);

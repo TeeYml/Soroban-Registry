@@ -10,12 +10,19 @@ interface GraphControlsProps {
     onSearchChange: (q: string) => void;
     networkFilter: string;
     onNetworkFilterChange: (n: string) => void;
+    dependencyTypeFilter: string;
+    onDependencyTypeFilterChange: (value: string) => void;
+    showCyclesOnly: boolean;
+    onShowCyclesOnlyChange: (value: boolean) => void;
+    minCallFrequency: number;
+    onMinCallFrequencyChange: (value: number) => void;
     demoMode: boolean;
     onDemoModeChange: (v: boolean) => void;
     demoNodeCount: number;
     onDemoNodeCountChange: (v: number) => void;
     totalNodes: number;
     totalEdges: number;
+    cyclicEdgeCount: number;
     criticalCount: number;
     searchMatchCount: number;
     searchMatchIndex: number;
@@ -43,12 +50,19 @@ export default function GraphControls({
     onSearchChange,
     networkFilter,
     onNetworkFilterChange,
+    dependencyTypeFilter,
+    onDependencyTypeFilterChange,
+    showCyclesOnly,
+    onShowCyclesOnlyChange,
+    minCallFrequency,
+    onMinCallFrequencyChange,
     demoMode,
     onDemoModeChange,
     demoNodeCount,
     onDemoNodeCountChange,
     totalNodes,
     totalEdges,
+    cyclicEdgeCount,
     criticalCount,
     searchMatchCount,
     searchMatchIndex,
@@ -127,6 +141,52 @@ export default function GraphControls({
                         </select>
                     </div>
 
+                    <div>
+                        <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block font-medium">Dependency Type</label>
+                        <select
+                            id="graph-dependency-type-filter"
+                            value={dependencyTypeFilter}
+                            onChange={(e) => onDependencyTypeFilterChange(e.target.value)}
+                            className="w-full px-3 py-1.5 rounded-lg bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                        >
+                            <option value="">All Types</option>
+                            <option value="calls">Calls</option>
+                            <option value="imports">Imports</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block font-medium">
+                            Min Call Frequency: <span className="text-foreground font-medium">{minCallFrequency}</span>
+                        </label>
+                        <input
+                            id="graph-min-call-frequency"
+                            type="range"
+                            min={0}
+                            max={250}
+                            step={5}
+                            value={minCallFrequency}
+                            onChange={(e) => onMinCallFrequencyChange(Number(e.target.value))}
+                            className="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                        />
+                    </div>
+
+                    <div>
+                        <button
+                            onClick={() => onShowCyclesOnlyChange(!showCyclesOnly)}
+                            className={`flex items-center gap-2 w-full text-sm transition-colors ${showCyclesOnly ? 'text-red-500' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${showCyclesOnly ? 'bg-red-500 border-red-500' : 'border-border'}`}>
+                                {showCyclesOnly && (
+                                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                            </div>
+                            <span className="font-medium">Show Circular Dependencies Only</span>
+                        </button>
+                    </div>
+
                     {/* Demo Mode */}
                     <div className="border-t border-border pt-3">
                         <button
@@ -198,6 +258,10 @@ export default function GraphControls({
                             <GitBranch className="w-3 h-3 text-muted-foreground" />
                             <span className="text-muted-foreground/70">Arrow = dependency direction</span>
                         </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-[2px] bg-red-500 border-t border-dashed border-red-300" />
+                            <span className="text-muted-foreground/70">Red dashed = circular dependency</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -229,6 +293,11 @@ export default function GraphControls({
                             <div className="text-center">
                                 <div className="text-sm font-bold text-amber-500 leading-none">{criticalCount}</div>
                                 <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Critical</div>
+                            </div>
+                            <div className="w-px h-6 bg-border" />
+                            <div className="text-center">
+                                <div className="text-sm font-bold text-red-500 leading-none">{cyclicEdgeCount}</div>
+                                <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Cycles</div>
                             </div>
                         </div>
                         <ChevronDown

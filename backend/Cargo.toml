@@ -28,6 +28,9 @@ sqlx = { version = "0.8", features = [
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
+# WebSocket
+tokio-tungstenite = "0.24"
+
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -81,7 +84,7 @@ wasmparser = "0.224"
 rust_decimal = "1.35"
 
 # OpenAPI
-utoipa = { version = "4", features = ["axum_extras", "chrono", "uuid"] }
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid", "decimal"] }
 utoipa-swagger-ui = { version = "8", features = ["axum"] }
 
 [profile.release]
