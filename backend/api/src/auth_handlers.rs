@@ -10,32 +10,53 @@ use crate::{
     state::AppState,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ChallengeQuery {
+    /// Stellar wallet address to authenticate
     pub address: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ChallengeResponse {
+    /// Same address passed in query
     pub address: String,
+    /// Random nonce to be signed by the wallet
     pub nonce: String,
+    /// How long before this challenge expires
     pub expires_in_seconds: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+#[schema(as = AuthVerifyRequest)]
 pub struct VerifyRequest {
+    /// Stellar wallet address being authenticated
     pub address: String,
+    /// Ed25519 public key in hex
     pub public_key: String,
+    /// Signed nonce in hex
     pub signature: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct VerifyResponse {
+    /// JSON Web Token for authentication
     pub token: String,
+    /// Always "Bearer"
     pub token_type: &'static str,
+    /// Seconds until token expiration
     pub expires_in_seconds: u64,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/auth/challenge",
+    params(ChallengeQuery),
+    responses(
+        (status = 200, description = "Challenge created", body = ChallengeResponse),
+        (status = 400, description = "Invalid address provided")
+    ),
+    tag = "Authentication"
+)]
 pub async fn get_challenge(
     State(state): State<AppState>,
     Query(query): Query<ChallengeQuery>,
@@ -55,6 +76,17 @@ pub async fn get_challenge(
     }))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/auth/verify",
+    request_body = VerifyRequest,
+    responses(
+        (status = 200, description = "Authentication successful", body = VerifyResponse),
+        (status = 401, description = "Authentication failed"),
+        (status = 400, description = "Invalid payload")
+    ),
+    tag = "Authentication"
+)]
 pub async fn verify_challenge(
     State(state): State<AppState>,
     Json(payload): Json<VerifyRequest>,

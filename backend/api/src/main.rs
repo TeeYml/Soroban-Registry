@@ -15,6 +15,7 @@ mod db_monitoring;
 
 mod activity_feed_handlers;
 mod activity_feed_routes;
+mod analytics_handlers;
 mod category_handlers;
 mod custom_metrics_handlers;
 mod dependency;
@@ -22,6 +23,7 @@ mod deprecation_handlers;
 mod error;
 mod events;
 mod handlers;
+mod org_handlers;
 mod dependency_handlers;
 mod multisig_handlers;
 mod multisig_routes;
@@ -228,6 +230,7 @@ async fn main() -> Result<()> {
     // Build router
     let app = Router::new()
         .merge(routes::auth_routes())
+        .merge(routes::organization_routes())
         .merge(routes::contract_routes())
         .merge(routes::publisher_routes())
         .merge(routes::health_routes())

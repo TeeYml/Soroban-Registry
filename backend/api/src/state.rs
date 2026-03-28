@@ -48,7 +48,7 @@ impl AppState {
         registry: Registry,
         job_engine: Arc<soroban_batch::engine::JobEngine>,
         is_shutting_down: Arc<AtomicBool>,
-    ) -> Self {
+    ) -> Result<Self, crate::shared::error::RegistryError> {
         let config = CacheConfig::from_env();
         let auth_mgr = Arc::new(RwLock::new(
             AuthManager::from_env().expect("JWT config validated at startup"),

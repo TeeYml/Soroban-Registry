@@ -144,6 +144,31 @@ impl AuthManager {
     }
 }
 
+#[axum::async_trait]
+impl<S> axum::extract::FromRequestParts<S> for AuthClaims
+where
+    S: Send + Sync,
+{
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let auth_header = parts
+            .headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+
+        let auth_manager = AuthManager::from_env().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        auth_manager
+            .validate_jwt(auth_header)
+            .map_err(|_| StatusCode::UNAUTHORIZED)
+    }
+}
+
 fn extract_bearer_token(req: &Request) -> Option<&str> {
     req.headers()
         .get(header::AUTHORIZATION)

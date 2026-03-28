@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 
 [features]
-default = []
+default = ["openapi"]
 openapi = []
 
 [[bin]]
@@ -18,7 +18,6 @@ shared = { path = "../shared" }
 verifier = { path = "../verifier" }
 
 soroban-batch = { path = "../../soroban-registry/crates/soroban-batch" }
-verifier = { path = "../verifier" }
 axum = { workspace = true, features = ["ws"] }
 tower = { workspace = true }
 tower-http = { workspace = true }
@@ -50,7 +49,6 @@ hex = { workspace = true }
 moka = { version = "0.12.13", features = ["future"] }
 async-trait = "0.1.89"
 lru = "0.16.3"
-rand = "0.8"
 async-recursion = "1.1.1"
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 jsonwebtoken = "9.3.0"
@@ -58,6 +56,7 @@ tokio-tungstenite = { workspace = true }
 regex = "1.10"
 lazy_static = "1.4"
 wasmparser = { workspace = true }
+difference = "2.0"
 contract_abi = { path = "../contract_abi" }
 rust_decimal = { workspace = true }
 redis = { version = "0.25", features = ["tokio-rustls-comp", "json", "connection-manager", "tokio-comp"] }

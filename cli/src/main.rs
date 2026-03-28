@@ -4,6 +4,7 @@ mod backup;
 mod batch_verify;
 mod commands;
 mod config;
+mod contracts;
 mod conversions;
 mod coverage;
 mod dashboard;
@@ -83,8 +84,16 @@ pub enum Commands {
 
     /// Get detailed information about a contract
     Info {
-        /// Contract registry UUID (use --network for network-specific config)
+        /// Contract registry identifier (UUID, contract address, or name)
         contract_id: String,
+
+        /// Output format (text, json, yaml)
+        #[arg(long, short = 'f', default_value = "text")]
+        format: String,
+
+        /// Highlight a specific ABI method
+        #[arg(long)]
+        highlight_method: Option<String>,
     },
 
     /// Publish a new contract to the registry
@@ -441,6 +450,12 @@ pub enum Commands {
         action: KeysCommands,
     },
 
+    /// Contract deployment verification and security scan (#522)
+    Contract {
+        #[command(subcommand)]
+        action: ContractCommands,
+    },
+
     /// Verify multiple contracts in a single atomic batch (all succeed or all rollback)
     BatchVerify {
         /// Comma-separated list of contract IDs to verify.
@@ -604,6 +619,49 @@ pub enum ConfigSubcommands {
         version: i32,
         #[arg(long)]
         created_by: String,
+    },
+}
+
+/// Sub-commands for the `contracts` group
+#[derive(Debug, Subcommand)]
+pub enum ContractsCommands {
+    /// List contracts with filtering and pagination
+    List {
+        /// Filter by network (mainnet, testnet, futurenet)
+        #[arg(long)]
+        network: Option<String>,
+
+        /// Filter by category (e.g., DEX, token, lending, oracle)
+        #[arg(long)]
+        category: Option<String>,
+
+        /// Maximum number of contracts to return
+        #[arg(long, default_value = "20")]
+        limit: usize,
+
+        /// Number of contracts to skip (for pagination)
+        #[arg(long, default_value = "0")]
+        offset: usize,
+
+        /// Sort by field: name, created_at, health_score, network
+        #[arg(long, default_value = "created_at")]
+        sort_by: String,
+
+        /// Sort order: asc or desc
+        #[arg(long, default_value = "desc")]
+        sort_order: String,
+
+        /// Output format: table, json, or csv
+        #[arg(long, default_value = "table")]
+        format: String,
+
+        /// Output results as JSON (shorthand for --format json)
+        #[arg(long)]
+        json: bool,
+
+        /// Output results as CSV (shorthand for --format csv)
+        #[arg(long)]
+        csv: bool,
     },
 }
 
@@ -787,6 +845,26 @@ pub enum KeysCommands {
     },
 }
 
+/// Sub-commands for the `contract` group (#522)
+#[derive(Debug, Subcommand)]
+pub enum ContractCommands {
+    /// Verify a deployed contract's authenticity against the on-chain registry
+    ///
+    /// Usage: soroban-registry contract verify <address> --network <network> [--json]
+    Verify {
+        /// On-chain contract address to verify
+        address: String,
+
+        /// Stellar network (mainnet | testnet | futurenet)
+        #[arg(long, default_value = "mainnet")]
+        network: String,
+
+        /// Output results as machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
 /// Sub-commands for the `webhook` group
 #[derive(Debug, Subcommand)]
 pub enum WebhookCommands {
@@ -942,9 +1020,25 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        Commands::Info { contract_id } => {
-            log::debug!("Command: info | contract_id={}", contract_id);
-            commands::info(&cli.api_url, &contract_id, cfg_network).await?;
+        Commands::Info {
+            contract_id,
+            format,
+            highlight_method,
+        } => {
+            log::debug!(
+                "Command: info | contract_id={} format={} highlight={:?}",
+                contract_id,
+                format,
+                highlight_method
+            );
+            commands::info(
+                &cli.api_url,
+                &contract_id,
+                &format,
+                highlight_method.as_deref(),
+                cfg_network,
+            )
+            .await?;
         }
         Commands::Publish {
             contract_id,
@@ -1568,6 +1662,16 @@ async fn main() -> Result<()> {
             } => {
                 log::debug!("Command: webhook verify-sig");
                 webhook::verify_signature_cmd(&secret, &payload, &signature)?;
+            }
+        },
+        // ── Contract verify command (#522) ───────────────────────────────────
+        Commands::Contract { action } => match action {
+            ContractCommands::Verify { address, network, json } => {
+                log::debug!(
+                    "Command: contract verify | address={} network={} json={}",
+                    address, network, json
+                );
+                contract_verify::run(&cli.api_url, &address, &network, json).await?;
             }
         },
         // ── Release Notes commands ───────────────────────────────────────────

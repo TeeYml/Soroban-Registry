@@ -1,4 +1,4 @@
-import { ContractSearchParams } from '@/lib/api';
+import type { ContractSearchParams } from '@/lib/api';
 
 type NetworkFilter = NonNullable<ContractSearchParams['network']>;
 
@@ -9,6 +9,7 @@ interface FilterPanelProps {
   languages: string[];
   selectedLanguages: string[];
   onToggleLanguage: (value: string) => void;
+  networks: NetworkFilter[];
   selectedNetworks: NetworkFilter[];
   onToggleNetwork: (value: NetworkFilter) => void;
   author: string;
@@ -70,6 +71,7 @@ export function FilterPanel({
   languages,
   selectedLanguages,
   onToggleLanguage,
+  networks,
   selectedNetworks,
   onToggleNetwork,
   author,
@@ -77,8 +79,6 @@ export function FilterPanel({
   verifiedOnly,
   onVerifiedChange,
 }: FilterPanelProps) {
-  const networks: NetworkFilter[] = ['mainnet', 'testnet', 'futurenet'];
-
   return (
     <div className="space-y-5">
       <CheckboxGroup
