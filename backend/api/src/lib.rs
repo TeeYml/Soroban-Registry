@@ -2,6 +2,7 @@ pub mod auth;
 pub mod backup_handlers;
 pub mod backup_routes;
 pub mod cache;
+pub mod contract_events;
 pub mod disaster_recovery_models;
 pub mod error;
 pub mod health_monitor;

@@ -1,9 +1,10 @@
 import { Contract } from '@/lib/api';
-import { CheckCircle2, Clock, ExternalLink, Tag } from 'lucide-react';
+import { Clock, ExternalLink, Tag } from 'lucide-react';
 import Link from 'next/link';
 import React from 'react';
 import HealthWidget from './HealthWidget';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import VerificationBadge from '@/components/verification/VerificationBadge';
 
 interface ContractCardProps {
   contract: Contract;
@@ -42,10 +43,7 @@ export default function ContractCard({ contract }: ContractCardProps) {
                   {contract.name}
                 </h3>
                 {contract.is_verified && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 text-[10px] font-semibold uppercase tracking-wide flex-shrink-0">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Verified
-                  </span>
+                  <VerificationBadge status="approved" />
                 )}
               </div>
               <p className="text-xs text-muted-foreground font-mono">

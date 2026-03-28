@@ -1,16 +1,17 @@
 'use client';
 
-import { Package, GitBranch, ChevronDown, BarChart2, Users, Menu, X, Layers, Search, Plus } from 'lucide-react';
+import { Package, GitBranch, ChevronDown, BarChart2, Users, Menu, X, Layers, Search, Plus, Bell } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useRef } from 'react';
 import ThemeToggle from './ThemeToggle';
+import NotificationBell from './NotificationBell';
 
 export default function Navbar() {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [menuOpenForPath, setMenuOpenForPath] = useState<string | null>(null);
     const dropdownTimeout = useRef<NodeJS.Timeout | null>(null);
-    const pathname = usePathname();
+    const pathname = usePathname() ?? '';
 
     // Derive mobileMenuOpen: auto-closes when pathname changes
     const mobileMenuOpen = menuOpenForPath === pathname;
@@ -53,6 +54,29 @@ export default function Navbar() {
                             }`}
                         >
                             Browse
+                        </Link>
+                        <Link
+                            href="/compare"
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-all ${
+                                isActive('/compare')
+                                    ? 'text-primary bg-primary/10'
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                            }`}
+                        >
+                            <Columns2 className="w-3 h-3" />
+                            Compare
+                        </Link>
+
+                        <Link
+                            href="/verify-contract"
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-all ${
+                                isActive('/verify-contract')
+                                    ? 'text-primary bg-primary/10'
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                            }`}
+                        >
+                            <ShieldCheck className="w-3 h-3" />
+                            Verify
                         </Link>
 
                         {/* Explore Dropdown */}
@@ -105,6 +129,17 @@ export default function Navbar() {
                                             Statistics
                                         </Link>
                                         <Link
+                                            href="/analytics"
+                                            className={`flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${
+                                                isActive('/analytics')
+                                                    ? 'text-primary bg-primary/5'
+                                                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                                            }`}
+                                        >
+                                            <PieChart className="w-3.5 h-3.5 text-primary/70" />
+                                            Analytics
+                                        </Link>
+                                        <Link
                                             href="/templates"
                                             className={`flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${
                                                 isActive('/templates')
@@ -136,6 +171,7 @@ export default function Navbar() {
                     {/* Right actions */}
                     <div className="hidden md:flex items-center gap-1.5">
                         <ThemeToggle />
+                        <NotificationBell />
                         <Link
                             href="/publish"
                             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-primary text-primary-foreground text-[13px] font-semibold btn-glow transition-all hover:brightness-110"
@@ -164,8 +200,11 @@ export default function Navbar() {
                         <div className="flex flex-col gap-0.5">
                             {[
                                 { href: '/contracts', label: 'Browse Contracts', icon: Search },
+                                { href: '/compare', label: 'Compare Contracts', icon: Columns2 },
+                                { href: '/verify-contract', label: 'Verify Contract', icon: ShieldCheck },
                                 { href: '/publishers', label: 'Publishers', icon: Users },
                                 { href: '/stats', label: 'Statistics', icon: BarChart2 },
+                                { href: '/analytics', label: 'Analytics', icon: PieChart },
                                 { href: '/templates', label: 'Templates', icon: Layers },
                                 { href: '/graph', label: 'Dependency Graph', icon: GitBranch },
                             ].map(({ href, label, icon: Icon }) => (

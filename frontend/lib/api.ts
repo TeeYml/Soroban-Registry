@@ -25,6 +25,33 @@ import {
 
 export type Network = "mainnet" | "testnet" | "futurenet";
 
+export type NetworkStatus = "online" | "offline" | "degraded";
+
+export interface NetworkEndpoints {
+  rpc_url: string;
+  health_url: string;
+  explorer_url: string;
+  friendbot_url?: string;
+}
+
+export interface NetworkInfo {
+  id: string;
+  name: string;
+  network_type: Network;
+  status: NetworkStatus;
+  endpoints: NetworkEndpoints;
+  last_checked_at: string;
+  last_indexed_ledger_height?: number;
+  last_indexed_at?: string;
+  consecutive_failures: number;
+  status_message?: string;
+}
+
+export interface NetworkListResponse {
+  networks: NetworkInfo[];
+  cached_at: string;
+}
+
 /** Per-network config (Issue #43) */
 export interface NetworkConfig {
   contract_id: string;
@@ -50,6 +77,8 @@ export interface Contract {
   logo_url?: string;
   created_at: string;
   updated_at: string;
+  verified_at?: string;
+  last_accessed_at?: string;
   is_maintenance?: boolean;
   /** Logical contract grouping (Issue #43) */
   logical_id?: string;
@@ -193,6 +222,16 @@ export interface ContractSearchParams {
   sort_order?: 'asc' | 'desc';
 }
 
+export interface SearchSuggestion {
+  text: string;
+  kind: string;
+  score: number;
+}
+
+export interface SearchSuggestionsResponse {
+  items: SearchSuggestion[];
+}
+
 export interface PublishRequest {
   contract_id: string;
   name: string;
@@ -312,29 +351,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
 /**
- * Helper to create a mock response with a delay
- */
-function _mockResponse<T>(data: T, delay = 300): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(data), delay));
-}
-
-/**
- * Helper to build query string from params object
- */
-function _buildQueryParams(params: Record<string, string | number | boolean | string[] | undefined>): URLSearchParams {
-  const qs = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null) continue;
-    if (Array.isArray(value)) {
-      value.forEach(v => qs.append(key, v));
-    } else {
-      qs.append(key, String(value));
-    }
-  }
-  return qs;
-}
-
-/**
  * Wrapper for API calls with consistent error handling
  */
 async function handleApiCall<T>(
@@ -387,6 +403,63 @@ async function handleApiCall<T>(
 }
 
 export const api = {
+  async getNetworks(): Promise<NetworkListResponse> {
+    if (USE_MOCKS) {
+      const now = new Date().toISOString();
+      return {
+        cached_at: now,
+        networks: [
+          {
+            id: "mainnet",
+            name: "Stellar Mainnet",
+            network_type: "mainnet",
+            status: "online",
+            endpoints: {
+              rpc_url: "https://rpc-mainnet.stellar.org",
+              health_url: "https://rpc-mainnet.stellar.org/health",
+              explorer_url: "https://stellar.expert/explorer/public",
+            },
+            last_checked_at: now,
+            consecutive_failures: 0,
+          },
+          {
+            id: "testnet",
+            name: "Stellar Testnet",
+            network_type: "testnet",
+            status: "online",
+            endpoints: {
+              rpc_url: "https://rpc-testnet.stellar.org",
+              health_url: "https://rpc-testnet.stellar.org/health",
+              explorer_url: "https://stellar.expert/explorer/testnet",
+              friendbot_url: "https://friendbot.stellar.org",
+            },
+            last_checked_at: now,
+            consecutive_failures: 0,
+          },
+          {
+            id: "futurenet",
+            name: "Stellar Futurenet",
+            network_type: "futurenet",
+            status: "online",
+            endpoints: {
+              rpc_url: "https://rpc-futurenet.stellar.org",
+              health_url: "https://rpc-futurenet.stellar.org/health",
+              explorer_url: "https://stellar.expert/explorer/futurenet",
+              friendbot_url: "https://friendbot-futurenet.stellar.org",
+            },
+            last_checked_at: now,
+            consecutive_failures: 0,
+          },
+        ],
+      };
+    }
+
+    return handleApiCall<NetworkListResponse>(
+      () => fetch(`${API_URL}/networks`),
+      "/networks",
+    );
+  },
+
   // Contract endpoints
   async getContracts(
     params?: ContractSearchParams,
@@ -531,6 +604,43 @@ export const api = {
       return { ...data, items: raw.contracts as Contract[] };
     }
     return data;
+  },
+
+  async getContractSearchSuggestions(
+    q: string,
+    limit = 8,
+  ): Promise<SearchSuggestionsResponse> {
+    if (USE_MOCKS) {
+      const lowered = q.trim().toLowerCase();
+      if (!lowered) {
+        return { items: [] };
+      }
+
+      const items = Array.from(
+        new Set(
+          MOCK_CONTRACTS
+            .flatMap((contract) => [contract.name, contract.category].filter(Boolean))
+            .filter((value: string) => value.toLowerCase().includes(lowered)),
+        ),
+      )
+        .slice(0, limit)
+        .map((text) => ({
+          text,
+          kind: MOCK_CONTRACTS.some((contract) => contract.name === text) ? 'contract' : 'category',
+          score: 1,
+        }));
+
+      return { items };
+    }
+
+    const params = new URLSearchParams();
+    params.set("q", q);
+    params.set("limit", String(limit));
+
+    return handleApiCall<SearchSuggestionsResponse>(
+      () => fetch(`${API_URL}/api/contracts/suggestions?${params.toString()}`),
+      "/api/contracts/suggestions",
+    );
   },
 
   async getContract(id: string, network?: Network): Promise<ContractGetResponse> {

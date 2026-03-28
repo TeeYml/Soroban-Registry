@@ -11,7 +11,7 @@ import { FilterPanel } from '@/components/contracts/FilterPanel';
 import { ResultsCount } from '@/components/contracts/ResultsCount';
 import { SortDropdown, SortBy } from '@/components/contracts/SortDropdown';
 import TagAutocomplete from '@/components/tags/TagAutocomplete';
-import { Filter, Package, SlidersHorizontal, X, Search, Sparkles, CheckCircle, Users, LayoutGrid, List } from 'lucide-react';
+import { Filter, Package, SlidersHorizontal, X, Search, Sparkles, CheckCircle, Users } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAnalytics } from '@/hooks/useAnalytics';
 
@@ -118,6 +118,16 @@ type ContractsUiFilters = {
   page_size: number;
 };
 
+type ContractsResponse = Awaited<ReturnType<typeof api.getContracts>>;
+
+const EMPTY_CONTRACTS_RESPONSE: ContractsResponse = {
+  items: [],
+  total: 0,
+  page: 1,
+  page_size: DEFAULT_PAGE_SIZE,
+  total_pages: 1,
+};
+
 function getInitialFilters(searchParams: URLSearchParams): ContractsUiFilters {
   const query = searchParams.get('query') || searchParams.get('q') || '';
   const categories = parseCsvOrMulti(searchParams.getAll('category'));
@@ -151,7 +161,7 @@ function getInitialFilters(searchParams: URLSearchParams): ContractsUiFilters {
 
 export function ContractsContent() {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '/contracts';
   const searchParams = useSearchParams();
   const { logEvent } = useAnalytics();
   const lastSearchSignatureRef = useRef<string>('');
@@ -159,7 +169,7 @@ export function ContractsContent() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const [filters, setFilters] = useState<ContractsUiFilters>(() =>
-    getInitialFilters(new URLSearchParams(searchParams.toString())),
+    getInitialFilters(new URLSearchParams(searchParams?.toString() ?? '')),
   );
 
   const debouncedQuery = useDebouncedValue(filters.query, 300);
@@ -199,10 +209,10 @@ export function ContractsContent() {
     [debouncedQuery, filters],
   );
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching } = useQuery<Awaited<ReturnType<typeof api.getContracts>>>({
     queryKey: ['contracts', apiParams],
     queryFn: () => api.getContracts(apiParams),
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData) => previousData ?? EMPTY_CONTRACTS_RESPONSE,
   });
 
   const { data: stats } = useQuery({
@@ -210,7 +220,6 @@ export function ContractsContent() {
     queryFn: () => api.getStats(),
   });
 
-  const isEmptyResult = (data?.total ?? 0) === 0;
   const paginationRange = useMemo(
     () => (data ? getPaginationRange(filters.page, data.total_pages) : []),
     [filters.page, data],
