@@ -37,12 +37,11 @@ async fn contributor_contract_count(
 pub async fn list_contributors(
     State(state): State<AppState>,
 ) -> ApiResult<Json<Vec<ContributorWithStats>>> {
-    let contributors: Vec<Contributor> = sqlx::query_as(
-        "SELECT * FROM contributors ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| db_internal_error("list contributors", e))?;
+    let contributors: Vec<Contributor> =
+        sqlx::query_as("SELECT * FROM contributors ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| db_internal_error("list contributors", e))?;
 
     let mut result = Vec::with_capacity(contributors.len());
     for c in contributors {
@@ -59,11 +58,8 @@ pub async fn create_contributor(
     Json(req): Json<CreateContributorRequest>,
 ) -> impl IntoResponse {
     if req.stellar_address.is_empty() {
-        return ApiError::bad_request(
-            "InvalidRequest",
-            "stellar_address is required",
-        )
-        .into_response();
+        return ApiError::bad_request("InvalidRequest", "stellar_address is required")
+            .into_response();
     }
 
     let links = req.links.unwrap_or_else(|| serde_json::json!({}));
@@ -82,7 +78,9 @@ pub async fn create_contributor(
     .await
     {
         Ok(c) => c,
-        Err(sqlx::Error::Database(e)) if e.constraint() == Some("contributors_stellar_address_key") => {
+        Err(sqlx::Error::Database(e))
+            if e.constraint() == Some("contributors_stellar_address_key") =>
+        {
             return ApiError::bad_request(
                 "DuplicateAddress",
                 "A contributor profile already exists for this stellar address",
@@ -123,7 +121,10 @@ pub async fn get_contributor(
 
     let count = contributor_contract_count(&state.db, &contributor.stellar_address).await?;
 
-    Ok(Json(ContributorWithStats::from_contributor(contributor, count)))
+    Ok(Json(ContributorWithStats::from_contributor(
+        contributor,
+        count,
+    )))
 }
 
 /// PUT /api/contributors/:id — update a contributor profile
@@ -159,7 +160,10 @@ pub async fn update_contributor(
 
     let count = contributor_contract_count(&state.db, &contributor.stellar_address).await?;
 
-    Ok(Json(ContributorWithStats::from_contributor(contributor, count)))
+    Ok(Json(ContributorWithStats::from_contributor(
+        contributor,
+        count,
+    )))
 }
 
 /// GET /api/contributors/:id/contracts — get contracts published by a contributor

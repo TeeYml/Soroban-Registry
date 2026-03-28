@@ -9,9 +9,9 @@ mod batch_verify_handlers;
 mod breaking_changes;
 mod cache;
 mod canary_handlers;
-mod contributor_handlers;
 mod compatibility_testing_handlers;
 mod contract_events;
+mod contributor_handlers;
 mod db_monitoring;
 
 mod activity_feed_handlers;
