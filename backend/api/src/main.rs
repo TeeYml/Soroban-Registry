@@ -180,6 +180,11 @@ async fn main() -> Result<()> {
         health_monitor::run_health_monitor(hm_state, hm_status).await;
     });
 
+    let network_state = state.clone();
+    tokio::spawn(async move {
+        handlers::run_network_catalog_refresh(network_state).await;
+    });
+
     // Warm up the cache
     state.cache.clone().warm_up(pool.clone());
 
@@ -219,6 +224,7 @@ async fn main() -> Result<()> {
         .merge(routes::contract_routes())
         .merge(routes::publisher_routes())
         .merge(routes::health_routes())
+        .merge(routes::network_routes())
         .merge(routes::openapi_routes())
         .merge(routes::health_monitor_routes())
         .merge(routes::admin_routes())

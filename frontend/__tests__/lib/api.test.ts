@@ -32,6 +32,34 @@ test('getContracts: returns paginated results and calls correct URL', async () =
   expect(called.startsWith(`${API_URL}/api/contracts`)).toBe(true);
 });
 
+test('getNetworks: returns network metadata from /networks', async () => {
+  const mock = {
+    cached_at: new Date().toISOString(),
+    networks: [
+      {
+        id: 'mainnet',
+        name: 'Stellar Mainnet',
+        network_type: 'mainnet',
+        status: 'online',
+        endpoints: {
+          rpc_url: 'https://rpc-mainnet.stellar.org',
+          health_url: 'https://rpc-mainnet.stellar.org/health',
+          explorer_url: 'https://stellar.expert/explorer/public',
+        },
+        last_checked_at: new Date().toISOString(),
+        consecutive_failures: 0,
+      },
+    ],
+  };
+
+  fetchMock.mockResponseOnce(JSON.stringify(mock), { status: 200 });
+
+  const res = await api.getNetworks();
+  expect(res.networks).toHaveLength(1);
+  expect(res.networks[0].endpoints.explorer_url).toContain('stellar.expert');
+  expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/networks`);
+});
+
 test('getContract: success and 404 error handling', async () => {
   const contract = { id: 'c2', contract_id: 'c2', wasm_hash: '', name: 'B', publisher_id: 'p2', network: 'testnet', is_verified: true, tags: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
   fetchMock.mockResponseOnce(JSON.stringify(contract), { status: 200 });

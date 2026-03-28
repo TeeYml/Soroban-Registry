@@ -224,6 +224,12 @@ pub fn health_routes() -> Router<AppState> {
         .route("/api/stats", get(handlers::get_stats))
 }
 
+pub fn network_routes() -> Router<AppState> {
+    Router::new()
+        .route("/networks", get(handlers::list_networks))
+        .route("/api/networks", get(handlers::list_networks))
+}
+
 pub fn health_monitor_routes() -> Router<AppState> {
     Router::new().route(
         "/api/health-monitor/status",

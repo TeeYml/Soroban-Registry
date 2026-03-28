@@ -61,6 +61,46 @@ pub struct NetworkConfig {
     pub max_version: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum NetworkStatus {
+    Online,
+    Offline,
+    Degraded,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct NetworkEndpoints {
+    pub rpc_url: String,
+    pub health_url: String,
+    pub explorer_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub friendbot_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct NetworkInfo {
+    pub id: String,
+    pub name: String,
+    pub network_type: Network,
+    pub status: NetworkStatus,
+    pub endpoints: NetworkEndpoints,
+    pub last_checked_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_indexed_ledger_height: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_indexed_at: Option<DateTime<Utc>>,
+    pub consecutive_failures: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct NetworkListResponse {
+    pub networks: Vec<NetworkInfo>,
+    pub cached_at: DateTime<Utc>,
+}
+
 /// Network where the contract is deployed
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema)]
 #[sqlx(type_name = "network_type", rename_all = "lowercase")]

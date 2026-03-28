@@ -25,6 +25,33 @@ import {
 
 export type Network = "mainnet" | "testnet" | "futurenet";
 
+export type NetworkStatus = "online" | "offline" | "degraded";
+
+export interface NetworkEndpoints {
+  rpc_url: string;
+  health_url: string;
+  explorer_url: string;
+  friendbot_url?: string;
+}
+
+export interface NetworkInfo {
+  id: string;
+  name: string;
+  network_type: Network;
+  status: NetworkStatus;
+  endpoints: NetworkEndpoints;
+  last_checked_at: string;
+  last_indexed_ledger_height?: number;
+  last_indexed_at?: string;
+  consecutive_failures: number;
+  status_message?: string;
+}
+
+export interface NetworkListResponse {
+  networks: NetworkInfo[];
+  cached_at: string;
+}
+
 /** Per-network config (Issue #43) */
 export interface NetworkConfig {
   contract_id: string;
@@ -50,6 +77,8 @@ export interface Contract {
   logo_url?: string;
   created_at: string;
   updated_at: string;
+  verified_at?: string;
+  last_accessed_at?: string;
   is_maintenance?: boolean;
   /** Logical contract grouping (Issue #43) */
   logical_id?: string;
@@ -364,6 +393,63 @@ async function handleApiCall<T>(
 }
 
 export const api = {
+  async getNetworks(): Promise<NetworkListResponse> {
+    if (USE_MOCKS) {
+      const now = new Date().toISOString();
+      return {
+        cached_at: now,
+        networks: [
+          {
+            id: "mainnet",
+            name: "Stellar Mainnet",
+            network_type: "mainnet",
+            status: "online",
+            endpoints: {
+              rpc_url: "https://rpc-mainnet.stellar.org",
+              health_url: "https://rpc-mainnet.stellar.org/health",
+              explorer_url: "https://stellar.expert/explorer/public",
+            },
+            last_checked_at: now,
+            consecutive_failures: 0,
+          },
+          {
+            id: "testnet",
+            name: "Stellar Testnet",
+            network_type: "testnet",
+            status: "online",
+            endpoints: {
+              rpc_url: "https://rpc-testnet.stellar.org",
+              health_url: "https://rpc-testnet.stellar.org/health",
+              explorer_url: "https://stellar.expert/explorer/testnet",
+              friendbot_url: "https://friendbot.stellar.org",
+            },
+            last_checked_at: now,
+            consecutive_failures: 0,
+          },
+          {
+            id: "futurenet",
+            name: "Stellar Futurenet",
+            network_type: "futurenet",
+            status: "online",
+            endpoints: {
+              rpc_url: "https://rpc-futurenet.stellar.org",
+              health_url: "https://rpc-futurenet.stellar.org/health",
+              explorer_url: "https://stellar.expert/explorer/futurenet",
+              friendbot_url: "https://friendbot-futurenet.stellar.org",
+            },
+            last_checked_at: now,
+            consecutive_failures: 0,
+          },
+        ],
+      };
+    }
+
+    return handleApiCall<NetworkListResponse>(
+      () => fetch(`${API_URL}/networks`),
+      "/networks",
+    );
+  },
+
   // Contract endpoints
   async getContracts(
     params?: ContractSearchParams,

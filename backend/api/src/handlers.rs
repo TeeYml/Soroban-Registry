@@ -19,7 +19,8 @@ use shared::{
     CreateContractVersionRequest, CreateInteractionBatchRequest, CreateInteractionRequest,
     DeploymentStats, InteractionTimeSeriesPoint, InteractionTimeSeriesResponse,
     InteractionsListResponse, InteractionsQueryParams, InteractorStats, Network, NetworkConfig,
-    PaginatedResponse, PublishRequest, Publisher, SemVer, TimelineEntry, TopUser, TrendingParams,
+    NetworkEndpoints, NetworkInfo, NetworkListResponse, NetworkStatus, PaginatedResponse,
+    PublishRequest, Publisher, SemVer, TimelineEntry, TopUser, TrendingParams,
     UpdateContractMetadataRequest, UpdateContractStatusRequest, VerifyRequest,
 };
 use std::time::Duration;
@@ -98,6 +99,230 @@ async fn track_contract_access(state: &AppState, contract_id: Uuid) {
             tracing::warn!(contract_id = %contract_id, error = ?err, "failed to refresh contract last_accessed_at");
         }
     });
+}
+
+const NETWORKS_CACHE_NAMESPACE: &str = "system";
+const NETWORKS_CACHE_KEY: &str = "network_catalog";
+const NETWORKS_REFRESH_INTERVAL_SECS: u64 = 60;
+const NETWORK_DEGRADED_FAILURE_THRESHOLD: i32 = 1;
+const NETWORK_OFFLINE_FAILURE_THRESHOLD: i32 = 5;
+const NETWORK_STALE_AFTER_MINUTES: i64 = 10;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct IndexerStateSnapshot {
+    last_indexed_ledger_height: i64,
+    indexed_at: chrono::DateTime<chrono::Utc>,
+    consecutive_failures: i32,
+    error_message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct StaticNetworkDefinition {
+    id: &'static str,
+    name: &'static str,
+    network_type: Network,
+    rpc_url: String,
+    explorer_url: String,
+    friendbot_url: Option<String>,
+}
+
+fn default_rpc_url(network: &Network) -> &'static str {
+    match network {
+        Network::Mainnet => "https://rpc-mainnet.stellar.org",
+        Network::Testnet => "https://rpc-testnet.stellar.org",
+        Network::Futurenet => "https://rpc-futurenet.stellar.org",
+    }
+}
+
+fn default_explorer_url(network: &Network) -> &'static str {
+    match network {
+        Network::Mainnet => "https://stellar.expert/explorer/public",
+        Network::Testnet => "https://stellar.expert/explorer/testnet",
+        Network::Futurenet => "https://stellar.expert/explorer/futurenet",
+    }
+}
+
+fn default_friendbot_url(network: &Network) -> Option<&'static str> {
+    match network {
+        Network::Mainnet => None,
+        Network::Testnet => Some("https://friendbot.stellar.org"),
+        Network::Futurenet => Some("https://friendbot-futurenet.stellar.org"),
+    }
+}
+
+fn configured_networks() -> Vec<StaticNetworkDefinition> {
+    let entries = [
+        (
+            "mainnet",
+            "Stellar Mainnet",
+            Network::Mainnet,
+            "STELLAR_RPC_MAINNET",
+            "STELLAR_EXPLORER_MAINNET",
+            "STELLAR_FRIENDBOT_MAINNET",
+        ),
+        (
+            "testnet",
+            "Stellar Testnet",
+            Network::Testnet,
+            "STELLAR_RPC_TESTNET",
+            "STELLAR_EXPLORER_TESTNET",
+            "STELLAR_FRIENDBOT_TESTNET",
+        ),
+        (
+            "futurenet",
+            "Stellar Futurenet",
+            Network::Futurenet,
+            "STELLAR_RPC_FUTURENET",
+            "STELLAR_EXPLORER_FUTURENET",
+            "STELLAR_FRIENDBOT_FUTURENET",
+        ),
+    ];
+
+    entries
+        .into_iter()
+        .map(
+            |(id, name, network_type, rpc_env, explorer_env, friendbot_env)| StaticNetworkDefinition {
+                id,
+                name,
+                rpc_url: std::env::var(rpc_env)
+                    .unwrap_or_else(|_| default_rpc_url(&network_type).to_string()),
+                explorer_url: std::env::var(explorer_env)
+                    .unwrap_or_else(|_| default_explorer_url(&network_type).to_string()),
+                friendbot_url: std::env::var(friendbot_env)
+                    .ok()
+                    .or_else(|| default_friendbot_url(&network_type).map(str::to_string)),
+                network_type,
+            },
+        )
+        .collect()
+}
+
+fn derive_network_status(
+    rpc_healthy: bool,
+    snapshot: Option<&IndexerStateSnapshot>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> (NetworkStatus, Option<String>) {
+    if !rpc_healthy {
+        return (
+            NetworkStatus::Offline,
+            Some("RPC health check failed".to_string()),
+        );
+    }
+
+    if let Some(snapshot) = snapshot {
+        let stale = now - snapshot.indexed_at > chrono::Duration::minutes(NETWORK_STALE_AFTER_MINUTES);
+
+        if snapshot.consecutive_failures >= NETWORK_OFFLINE_FAILURE_THRESHOLD {
+            return (
+                NetworkStatus::Offline,
+                snapshot
+                    .error_message
+                    .clone()
+                    .or_else(|| Some(format!("{} consecutive indexer failures", snapshot.consecutive_failures))),
+            );
+        }
+
+        if stale || snapshot.consecutive_failures >= NETWORK_DEGRADED_FAILURE_THRESHOLD {
+            return (
+                NetworkStatus::Degraded,
+                if stale {
+                    Some("Indexer status is stale".to_string())
+                } else {
+                    snapshot
+                        .error_message
+                        .clone()
+                        .or_else(|| Some(format!("{} consecutive indexer failures", snapshot.consecutive_failures)))
+                },
+            );
+        }
+    }
+
+    (NetworkStatus::Online, None)
+}
+
+async fn probe_network_health(client: &reqwest::Client, health_url: &str) -> bool {
+    match client.get(health_url).send().await {
+        Ok(response) => response.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+async fn fetch_network_catalog(db: &sqlx::PgPool) -> Result<NetworkListResponse, sqlx::Error> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let now = chrono::Utc::now();
+
+    let mut networks = Vec::new();
+    for definition in configured_networks() {
+        let health_url = format!("{}/health", definition.rpc_url.trim_end_matches('/'));
+        let snapshot: Option<IndexerStateSnapshot> = sqlx::query_as(
+            "SELECT last_indexed_ledger_height, indexed_at, consecutive_failures, error_message
+             FROM indexer_state
+             WHERE network = $1",
+        )
+        .bind(&definition.network_type)
+        .fetch_optional(db)
+        .await?;
+
+        let rpc_healthy = probe_network_health(&client, &health_url).await;
+        let (status, status_message) = derive_network_status(rpc_healthy, snapshot.as_ref(), now);
+
+        networks.push(NetworkInfo {
+            id: definition.id.to_string(),
+            name: definition.name.to_string(),
+            network_type: definition.network_type,
+            status,
+            endpoints: NetworkEndpoints {
+                rpc_url: definition.rpc_url,
+                health_url,
+                explorer_url: definition.explorer_url,
+                friendbot_url: definition.friendbot_url,
+            },
+            last_checked_at: now,
+            last_indexed_ledger_height: snapshot.as_ref().map(|s| s.last_indexed_ledger_height),
+            last_indexed_at: snapshot.as_ref().map(|s| s.indexed_at),
+            consecutive_failures: snapshot.as_ref().map(|s| s.consecutive_failures).unwrap_or(0),
+            status_message,
+        });
+    }
+
+    Ok(NetworkListResponse {
+        networks,
+        cached_at: now,
+    })
+}
+
+async fn refresh_network_catalog_cache(state: &AppState) -> Result<NetworkListResponse, ApiError> {
+    let response = fetch_network_catalog(&state.db)
+        .await
+        .map_err(|err| db_internal_error("fetch network catalog", err))?;
+
+    if let Ok(serialized) = serde_json::to_string(&response) {
+        state
+            .cache
+            .put(
+                NETWORKS_CACHE_NAMESPACE,
+                NETWORKS_CACHE_KEY,
+                serialized,
+                Some(Duration::from_secs(NETWORKS_REFRESH_INTERVAL_SECS)),
+            )
+            .await;
+    }
+
+    Ok(response)
+}
+
+pub async fn run_network_catalog_refresh(state: AppState) {
+    let mut interval = tokio::time::interval(Duration::from_secs(NETWORKS_REFRESH_INTERVAL_SECS));
+
+    loop {
+        interval.tick().await;
+        if let Err(err) = refresh_network_catalog_cache(&state).await {
+            tracing::warn!(error = ?err, "failed to refresh network catalog cache");
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, sqlx::Type)]
@@ -459,6 +684,29 @@ pub async fn get_stats(State(state): State<AppState>) -> ApiResult<Json<Value>> 
         "verified_contracts": verified_contracts,
         "total_publishers": total_publishers,
     })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/networks",
+    responses(
+        (status = 200, description = "Supported network metadata", body = NetworkListResponse)
+    ),
+    tag = "Networks"
+)]
+pub async fn list_networks(State(state): State<AppState>) -> ApiResult<Json<NetworkListResponse>> {
+    if let (Some(cached), true) = state
+        .cache
+        .get(NETWORKS_CACHE_NAMESPACE, NETWORKS_CACHE_KEY)
+        .await
+    {
+        if let Ok(payload) = serde_json::from_str::<NetworkListResponse>(&cached) {
+            return Ok(Json(payload));
+        }
+    }
+
+    let response = refresh_network_catalog_cache(&state).await?;
+    Ok(Json(response))
 }
 
 /// List and search contracts
@@ -3298,6 +3546,46 @@ mod tests {
         assert_eq!(
             contract_timestamp_for_sort(&contract, &shared::SortBy::LastAccessedAt),
             contract.last_accessed_at
+        );
+    }
+
+    #[test]
+    fn derive_network_status_marks_rpc_failures_offline_and_stale_states_degraded() {
+        let now = chrono::Utc::now();
+        let healthy_snapshot = IndexerStateSnapshot {
+            last_indexed_ledger_height: 42,
+            indexed_at: now,
+            consecutive_failures: 0,
+            error_message: None,
+        };
+        let stale_snapshot = IndexerStateSnapshot {
+            last_indexed_ledger_height: 42,
+            indexed_at: now - chrono::Duration::minutes(NETWORK_STALE_AFTER_MINUTES + 1),
+            consecutive_failures: 0,
+            error_message: None,
+        };
+        let failing_snapshot = IndexerStateSnapshot {
+            last_indexed_ledger_height: 42,
+            indexed_at: now,
+            consecutive_failures: NETWORK_OFFLINE_FAILURE_THRESHOLD,
+            error_message: Some("RPC unavailable".to_string()),
+        };
+
+        assert_eq!(
+            derive_network_status(true, Some(&healthy_snapshot), now),
+            (NetworkStatus::Online, None)
+        );
+        assert_eq!(
+            derive_network_status(true, Some(&stale_snapshot), now).0,
+            NetworkStatus::Degraded
+        );
+        assert_eq!(
+            derive_network_status(false, Some(&healthy_snapshot), now).0,
+            NetworkStatus::Offline
+        );
+        assert_eq!(
+            derive_network_status(true, Some(&failing_snapshot), now).0,
+            NetworkStatus::Offline
         );
     }
 }

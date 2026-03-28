@@ -39,6 +39,49 @@ Response shape:
 
 ---
 
+## Network Metadata
+
+Use the networks endpoint to discover supported environments and populate client-side network selectors.
+
+### GET /networks
+
+Returns all supported deployment networks with RPC URLs, explorer links, and current status indicators.
+
+**Response:**
+```json
+{
+  "cached_at": "2026-03-25T10:15:00Z",
+  "networks": [
+    {
+      "id": "mainnet",
+      "name": "Stellar Mainnet",
+      "network_type": "mainnet",
+      "status": "online",
+      "endpoints": {
+        "rpc_url": "https://rpc-mainnet.stellar.org",
+        "health_url": "https://rpc-mainnet.stellar.org/health",
+        "explorer_url": "https://stellar.expert/explorer/public"
+      },
+      "last_checked_at": "2026-03-25T10:15:00Z",
+      "last_indexed_ledger_height": 52345678,
+      "consecutive_failures": 0
+    }
+  ]
+}
+```
+
+**Status Values:**
+- `online` - RPC health check is passing and the indexer has no known issues
+- `degraded` - RPC is reachable but indexing is stale or reporting failures
+- `offline` - RPC health checks are failing or the network is in a sustained failure state
+
+**Use Cases:**
+- Populate frontend network selectors dynamically
+- Show environment-specific explorer links
+- Gate features when a network is degraded or offline
+
+---
+
 ## Batch Operations
 
 Batch operations allow you to perform multiple actions in a single API call, reducing network overhead and improving performance.
