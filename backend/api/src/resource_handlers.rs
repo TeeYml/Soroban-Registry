@@ -27,6 +27,7 @@ mod tests {
     use super::*;
     use crate::auth::AuthManager;
     use crate::cache::{CacheConfig, CacheLayer};
+    use crate::contract_events::ContractEventHub;
     use crate::metrics;
     use crate::resource_tracking::{ResourceManager, ResourceUsage};
     use axum::extract::{Path, State};
@@ -56,7 +57,10 @@ mod tests {
             is_shutting_down: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             health_monitor_status: crate::health_monitor::HealthMonitorStatus::default(),
             resource_mgr: Arc::new(RwLock::new(ResourceManager::new())),
-            auth_mgr: Arc::new(RwLock::new(AuthManager::new("test-secret".to_string()))),
+            auth_mgr: Arc::new(RwLock::new(AuthManager::new(
+                "test-secret-test-secret-test-se".to_string(),
+            ))),
+            contract_events: Arc::new(ContractEventHub::from_env()),
         }
     }
 

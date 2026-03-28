@@ -1,5 +1,6 @@
 use crate::auth::AuthManager;
 use crate::cache::{CacheConfig, CacheLayer};
+use crate::contract_events::ContractEventHub;
 use crate::health_monitor::HealthMonitorStatus;
 use crate::resource_tracking::ResourceManager;
 use prometheus::Registry;

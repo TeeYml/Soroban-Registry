@@ -10,6 +10,7 @@ mod breaking_changes;
 mod cache;
 mod canary_handlers;
 mod compatibility_testing_handlers;
+mod contract_events;
 mod db_monitoring;
 
 mod activity_feed_handlers;

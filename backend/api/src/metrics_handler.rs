@@ -29,6 +29,7 @@ pub async fn metrics_endpoint(State(state): State<AppState>) -> impl IntoRespons
 mod tests {
     use super::*;
     use crate::cache::{CacheConfig, CacheLayer};
+    use crate::contract_events::ContractEventHub;
     use axum::extract::State;
     use axum::response::IntoResponse;
     use prometheus::Registry;
@@ -48,9 +49,10 @@ mod tests {
             is_shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             health_monitor_status: crate::health_monitor::HealthMonitorStatus::default(),
             auth_mgr: Arc::new(RwLock::new(crate::auth::AuthManager::new(
-                "test-secret".to_string(),
+                "test-secret-test-secret-test-se".to_string(),
             ))),
             resource_mgr: Arc::new(RwLock::new(crate::resource_tracking::ResourceManager::new())),
+            contract_events: Arc::new(ContractEventHub::from_env()),
         }
     }
 
