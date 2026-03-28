@@ -59,3 +59,4 @@ contract_abi = { path = "../contract_abi" }
 rust_decimal = { workspace = true }
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
+csv = "1.3"

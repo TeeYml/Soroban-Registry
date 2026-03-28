@@ -84,7 +84,7 @@ wasmparser = "0.224"
 rust_decimal = "1.35"
 
 # OpenAPI
-utoipa = { version = "4", features = ["axum_extras", "chrono", "uuid"] }
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid", "decimal"] }
 utoipa-swagger-ui = { version = "8", features = ["axum"] }
 
 [profile.release]
