@@ -402,6 +402,22 @@ pub struct VerifyRequest {
     pub compiler_version: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct BatchVerifyItem {
+    pub contract_id: String,
+    #[serde(default)]
+    pub source_code: Option<String>,
+    #[serde(default)]
+    pub build_params: Option<serde_json::Value>,
+    #[serde(default)]
+    pub compiler_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct BatchVerifyRequest {
+    pub contracts: Vec<BatchVerifyItem>,
+}
+
 /// Sorting options for contracts
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]

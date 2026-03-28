@@ -49,6 +49,7 @@ use crate::{
     contract_events::{ContractEventEnvelope, ContractEventVisibility},
     dependency,
     error::{ApiError, ApiResult},
+    onchain_verification::OnChainVerifier,
     state::AppState,
     type_safety::parser::parse_json_spec,
     type_safety::{generate_openapi, to_json, to_yaml},
@@ -2732,12 +2733,22 @@ pub async fn verify_contract(
         Some(&req.build_params),
     )
     .await;
+    let onchain_verifier = OnChainVerifier::new();
+    let abi_json = resolve_abi(&state, &contract.contract_id).await.ok();
+    let onchain_result = onchain_verifier
+        .verify_contract(&state.cache, &contract, abi_json.as_deref())
+        .await;
 
     let ip_address = extract_ip_address(&headers);
     let before_status = previous_status.unwrap_or_else(|| "pending".to_string());
 
-    match verification_result {
-        Ok(result) if result.verified => {
+    match (verification_result, onchain_result) {
+        (Ok(result), Ok(onchain))
+            if result.verified
+                && onchain.contract_exists_on_chain
+                && onchain.wasm_hash_matches
+                && onchain.abi_valid =>
+        {
             sqlx::query(
                 "UPDATE verifications
                  SET status = 'verified', verified_at = NOW(), error_message = NULL
@@ -2838,13 +2849,30 @@ pub async fn verify_contract(
                 "verification_id": verification_id,
                 "contract_id": contract.id,
                 "compiled_wasm_hash": result.compiled_wasm_hash,
-                "deployed_wasm_hash": result.deployed_wasm_hash
+                "deployed_wasm_hash": result.deployed_wasm_hash,
+                "on_chain": onchain
             })))
         }
-        Ok(result) => {
-            let failure_message = result
-                .message
-                .unwrap_or_else(|| "Verification failed due to bytecode mismatch".to_string());
+        (Ok(result), Ok(onchain)) => {
+            let mut reasons = Vec::new();
+            if !result.verified {
+                reasons.push(
+                    result.message.unwrap_or_else(|| {
+                        "Verification failed due to bytecode mismatch".to_string()
+                    }),
+                );
+            }
+            if !onchain.contract_exists_on_chain {
+                reasons.push("Contract does not exist on-chain".to_string());
+            }
+            if onchain.contract_exists_on_chain && !onchain.wasm_hash_matches {
+                reasons.push("On-chain deployment does not match the stored WASM hash".to_string());
+            }
+            if onchain.contract_exists_on_chain && !onchain.abi_valid {
+                reasons
+                    .push("Stored ABI does not validate against the deployed contract".to_string());
+            }
+            let failure_message = reasons.join("; ");
 
             sqlx::query(
                 "UPDATE verifications
@@ -2898,7 +2926,7 @@ pub async fn verify_contract(
                 failure_message,
             ))
         }
-        Err(err) => {
+        (Err(err), _) | (_, Err(err)) => {
             let failure_message = err.to_string();
 
             sqlx::query(

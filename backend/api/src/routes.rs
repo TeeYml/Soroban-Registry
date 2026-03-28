@@ -162,7 +162,7 @@ pub fn contract_routes() -> Router<AppState> {
         )
         .route(
             "/api/contracts/:id/performance",
-            get(handlers::get_contract_performance),
+            get(performance_handlers::get_contract_performance_overview),
         )
         .route(
             "/api/contracts/:id/metrics",
@@ -358,8 +358,16 @@ pub fn performance_routes() -> Router<AppState> {
     Router::new()
         // Contract-scoped performance endpoints
         .route(
+            "/api/contracts/:id/perf/benchmarks",
+            get(performance_handlers::list_benchmarks).post(performance_handlers::record_benchmark),
+        )
+        .route(
             "/api/contracts/:id/perf/metrics",
             get(performance_handlers::list_metrics).post(performance_handlers::record_metric),
+        )
+        .route(
+            "/api/contracts/:id/perf/comparison",
+            get(performance_handlers::get_performance_comparison),
         )
         .route(
             "/api/contracts/:id/perf/anomalies",
