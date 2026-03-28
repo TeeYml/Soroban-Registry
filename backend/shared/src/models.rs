@@ -2288,7 +2288,7 @@ pub struct ReleaseNotesResponse {
 // Contract changelog (release history)
 // ────────────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ContractChangelogEntry {
     pub version: String,
     pub created_at: DateTime<Utc>,
@@ -2303,7 +2303,7 @@ pub struct ContractChangelogEntry {
     pub breaking_changes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ContractChangelogResponse {
     pub contract_id: Uuid,
     pub entries: Vec<ContractChangelogEntry>,

@@ -545,15 +545,6 @@ async fn write_contract_audit_log(
     Ok(())
 }
 
-#[utoipa::path(
-    get,
-    path = "/health",
-    responses(
-        (status = 200, description = "Service is healthy", body = Object),
-        (status = 503, description = "Service is unavailable or degraded", body = Object)
-    ),
-    tag = "Observability"
-)]
 fn split_audit_changes(
     changes: &serde_json::Value,
     ip_address: &str,
@@ -802,6 +793,15 @@ struct ContractInteractionInsert<'a> {
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "Service is healthy", body = Object),
+        (status = 503, description = "Service is unavailable or degraded", body = Object)
+    ),
+    tag = "Observability"
+)]
 pub async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
     let uptime = state.started_at.elapsed().as_secs();
     let now = chrono::Utc::now().to_rfc3339();
@@ -1957,14 +1957,12 @@ pub async fn get_contract_source_diff(
 #[utoipa::path(
     get,
     path = "/api/contracts/{id}/changelog",
-    path = "/api/contracts/{id}/versions",
     params(
         ("id" = String, Path, description = "Contract UUID")
     ),
-    request_body = CreateContractVersionRequest,
     responses(
-        (status = 201, description = "Version created successfully", body = ContractVersion),
-        (status = 400, description = "Invalid input or version conflict"),
+        (status = 200, description = "Contract changelog with breaking-change markers", body = ContractChangelogResponse),
+        (status = 400, description = "Invalid contract ID format"),
         (status = 404, description = "Contract not found")
     ),
     tag = "Versions"
