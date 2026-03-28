@@ -378,6 +378,9 @@ mod tests {
             is_maintenance: false,
             logical_id: None,
             network_configs: None,
+            last_verified_at: None,
+            deployment_count: 0,
+            audit_status: shared::AuditStatus::None,
         }
     }
 

@@ -1617,8 +1617,10 @@ pub async fn get_contract_changelog(
             let old_selector = format!("{}@{}", contract_id, prev);
             let new_selector = format!("{}@{}", contract_id, v.version);
 
-            let old_abi = resolve_abi(&state, &old_selector).await?;
-            let new_abi = resolve_abi(&state, &new_selector).await?;
+            // Note: For internal resolution in handlers, we generally don't bypass unless requested.
+            // But these specific calls are for diffing, so we use default false.
+            let old_abi = resolve_abi(&state, &old_selector, false).await?;
+            let new_abi = resolve_abi(&state, &new_selector, false).await?;
 
             let old_spec = crate::type_safety::parser::parse_json_spec(&old_abi, &old_selector)
                 .map_err(|e| {
@@ -1788,7 +1790,7 @@ pub async fn create_contract_version(
 
         if let Some(old_version) = latest_version {
             let old_selector = format!("{}@{}", contract_id, old_version);
-            let old_abi = resolve_abi(&state, &old_selector).await?;
+            let old_abi = resolve_abi(&state, &old_selector, false).await?;
             let old_spec = crate::type_safety::parser::parse_json_spec(&old_abi, &contract_id)
                 .map_err(|e| {
                     ApiError::bad_request("InvalidABI", format!("Failed to parse old ABI: {}", e))
@@ -2298,6 +2300,7 @@ pub async fn get_publisher_contracts(
 #[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
 pub struct ContractAbiQuery {
     pub version: Option<String>,
+    pub bypass_cache: Option<bool>,
 }
 
 /// Fetch ABI JSON string for contract (by id or id@version)
@@ -2305,12 +2308,14 @@ async fn resolve_contract_abi(
     state: &AppState,
     id: &str,
     version: Option<&str>,
+    bypass_cache: bool,
 ) -> ApiResult<String> {
-    let selector = match version {
-        Some(v) => format!("{}@{}", id, v),
-        None => id.to_string(),
+    let selector = if let Some(v) = version {
+        format!("{}@{}", id, v)
+    } else {
+        id.to_string()
     };
-    resolve_abi(state, &selector).await
+    resolve_abi(state, &selector, bypass_cache).await
 }
 
 // Contract ABI and OpenAPI endpoints
@@ -2328,11 +2333,12 @@ async fn resolve_contract_abi(
     tag = "Artifacts"
 )]
 pub async fn get_contract_abi(
-    State(state): State<AppState>,
     Path(id): Path<String>,
     Query(query): Query<ContractAbiQuery>,
+    State(state): State<AppState>,
 ) -> ApiResult<Json<Value>> {
-    let abi_json = resolve_contract_abi(&state, &id, query.version.as_deref()).await?;
+    let bypass = query.bypass_cache.unwrap_or(false);
+    let abi_json = resolve_contract_abi(&state, &id, query.version.as_deref(), bypass).await?;
     let abi: Value = serde_json::from_str(&abi_json)
         .map_err(|e| ApiError::internal(format!("Invalid ABI JSON: {}", e)))?;
     Ok(Json(json!({ "abi": abi })))
@@ -2356,7 +2362,8 @@ pub async fn get_contract_openapi_yaml(
     Path(id): Path<String>,
     Query(query): Query<ContractAbiQuery>,
 ) -> ApiResult<Response> {
-    let abi_json = resolve_contract_abi(&state, &id, query.version.as_deref()).await?;
+    let bypass = query.bypass_cache.unwrap_or(false);
+    let abi_json = resolve_contract_abi(&state, &id, query.version.as_deref(), bypass).await?;
     let abi = parse_json_spec(&abi_json, &id)
         .map_err(|e| ApiError::bad_request("InvalidABI", format!("Failed to parse ABI: {}", e)))?;
     let doc = generate_openapi(&abi, Some("/invoke"));
@@ -2386,7 +2393,8 @@ pub async fn get_contract_openapi_json(
     Path(id): Path<String>,
     Query(query): Query<ContractAbiQuery>,
 ) -> ApiResult<Response> {
-    let abi_json = resolve_contract_abi(&state, &id, query.version.as_deref()).await?;
+    let bypass = query.bypass_cache.unwrap_or(false);
+    let abi_json = resolve_contract_abi(&state, &id, query.version.as_deref(), bypass).await?;
     let abi = parse_json_spec(&abi_json, &id)
         .map_err(|e| ApiError::bad_request("InvalidABI", format!("Failed to parse ABI: {}", e)))?;
     let doc = generate_openapi(&abi, Some("/invoke"));

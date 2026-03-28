@@ -43,7 +43,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(
+    pub async fn new(
         db: PgPool,
         registry: Registry,
         job_engine: Arc<soroban_batch::engine::JobEngine>,
@@ -58,7 +58,7 @@ impl AppState {
         Self {
             db,
             started_at: Instant::now(),
-            cache: Arc::new(CacheLayer::new(config)),
+            cache: Arc::new(CacheLayer::new(config).await),
             registry,
             job_engine,
             is_shutting_down,

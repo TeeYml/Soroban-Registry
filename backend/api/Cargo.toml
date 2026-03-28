@@ -60,6 +60,7 @@ lazy_static = "1.4"
 wasmparser = { workspace = true }
 contract_abi = { path = "../contract_abi" }
 rust_decimal = { workspace = true }
+redis = { version = "0.25", features = ["tokio-rustls-comp", "json", "connection-manager", "tokio-comp"] }
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
 futures-util = "0.3"

@@ -8,6 +8,8 @@ use std::time::Duration;
 pub struct CacheConfig {
     pub enabled: bool,
     pub max_capacity: u64,
+    pub redis_enabled: bool,
+    pub redis_url: Option<String>,
 }
 
 impl Default for CacheConfig {
@@ -15,6 +17,8 @@ impl Default for CacheConfig {
         Self {
             enabled: true,
             max_capacity: 10_000,
+            redis_enabled: false,
+            redis_url: None,
         }
     }
 }
@@ -30,20 +34,28 @@ impl CacheConfig {
         if let Ok(capacity_str) = std::env::var("CACHE_MAX_CAPACITY") {
             if let Ok(capacity) = capacity_str.parse::<u64>() {
                 config.max_capacity = capacity;
-            } else {
-                // Support parsing like "10 GB" by just falling back to 10000 limit for elements if not
             }
         }
 
+        if let Ok(redis_enabled_str) = std::env::var("REDIS_ENABLED") {
+            config.redis_enabled = redis_enabled_str.to_lowercase() == "true";
+        }
+
+        config.redis_url = std::env::var("REDIS_URL").ok();
+
         tracing::info!(
-            "Cache config loaded: enabled={}, capacity={}",
+            "Cache config loaded: enabled={}, capacity={}, redis_enabled={}",
             config.enabled,
-            config.max_capacity
+            config.max_capacity,
+            config.redis_enabled
         );
 
         config
     }
 }
+
+use redis::aio::ConnectionManager;
+use redis::AsyncCommands;
 
 pub struct CacheLayer {
     pub abi_cache: MokaCache<String, String>,
@@ -54,7 +66,7 @@ pub struct CacheLayer {
 }
 
 impl CacheLayer {
-    pub fn new(config: CacheConfig) -> Self {
+    pub async fn new(config: CacheConfig) -> Self {
         // 24-hour TTL for ABI, max size configurable default 10GB but we use the config max_capacity
         let abi_cache = MokaCache::builder()
             .max_capacity(config.max_capacity)
@@ -95,31 +107,74 @@ impl CacheLayer {
         &self.config
     }
 
-    pub async fn get_abi(&self, contract_id: &str) -> Option<String> {
-        if !self.config.enabled {
+    pub async fn get_abi(&self, contract_id: &str, bypass_cache: bool) -> Option<String> {
+        if !self.config.enabled || bypass_cache {
+            if bypass_cache {
+                tracing::debug!("Bypassing cache for contract_id: {}", contract_id);
+            }
             return None;
         }
-        let result = self.abi_cache.get(contract_id).await;
-        if result.is_some() {
+
+        // Check L1 cache (Moka)
+        if let Some(abi) = self.abi_cache.get(contract_id).await {
             crate::metrics::ABI_CACHE_HITS.inc();
-        } else {
-            crate::metrics::ABI_CACHE_MISSES.inc();
+            return Some(abi);
         }
-        result
+
+        // Check L2 cache (Redis)
+        if let Some(mut cm) = self.redis_cm.clone() {
+            let key = format!("abi:{}", contract_id);
+            match cm.get::<String, Option<String>>(key).await {
+                Ok(Some(abi)) => {
+                    crate::metrics::REDIS_CACHE_HITS.inc();
+                    // Back-fill L1 cache
+                    self.abi_cache
+                        .insert(contract_id.to_string(), abi.clone())
+                        .await;
+                    return Some(abi);
+                }
+                Ok(None) => {
+                    crate::metrics::REDIS_CACHE_MISSES.inc();
+                }
+                Err(e) => {
+                    tracing::error!("Redis get error: {}", e);
+                    crate::metrics::REDIS_CACHE_MISSES.inc();
+                }
+            }
+        }
+
+        crate::metrics::ABI_CACHE_MISSES.inc();
+        None
     }
 
     pub async fn put_abi(&self, contract_id: &str, abi: String) {
         if !self.config.enabled {
             return;
         }
-        self.abi_cache.insert(contract_id.to_string(), abi).await;
+
+        // Put to L1
+        self.abi_cache.insert(contract_id.to_string(), abi.clone()).await;
+
+        // Put to L2
+        if let Some(mut cm) = self.redis_cm.clone() {
+            let key = format!("abi:{}", contract_id);
+            let _: redis::RedisResult<()> = cm.set_ex::<String, String, ()>(key, abi, 24 * 3600).await;
+        }
     }
 
     pub async fn invalidate_abi(&self, contract_id: &str) {
         if !self.config.enabled {
             return;
         }
+
+        // Invalidate L1
         self.abi_cache.invalidate(contract_id).await;
+
+        // Invalidate L2
+        if let Some(mut cm) = self.redis_cm.clone() {
+            let key = format!("abi:{}", contract_id);
+            let _: redis::RedisResult<()> = cm.del::<String, ()>(key).await;
+        }
     }
 
     pub async fn get_verification(&self, bytecode_hash: &str) -> Option<String> {
@@ -235,7 +290,7 @@ impl CacheLayer {
                 )
                 .bind(id)
                 .fetch_optional(&pool).await {
-                    self.abi_cache.insert(contract_id.clone(), abi.to_string()).await;
+                    self.put_abi(&contract_id, abi.to_string()).await;
                 }
 
                 if let Some(w_hash) = wasm_hash {
@@ -265,17 +320,18 @@ mod tests {
         let config = CacheConfig {
             enabled: true,
             max_capacity: 100,
+            ..Default::default()
         };
-        let cache = CacheLayer::new(config);
+        let cache = CacheLayer::new(config).await;
 
         cache.put_abi("contract_1", "abi_json_1".to_string()).await;
 
-        let val = cache.get_abi("contract_1").await;
+        let val = cache.get_abi("contract_1", false).await;
         assert_eq!(val, Some("abi_json_1".to_string()));
 
         cache.invalidate_abi("contract_1").await;
 
-        let val2 = cache.get_abi("contract_1").await;
+        let val2 = cache.get_abi("contract_1", false).await;
         assert!(val2.is_none());
     }
 
@@ -284,8 +340,9 @@ mod tests {
         let config = CacheConfig {
             enabled: true,
             max_capacity: 100,
+            ..Default::default()
         };
-        let cache = CacheLayer::new(config);
+        let cache = CacheLayer::new(config).await;
 
         cache
             .put_verification("hash_1", "result_1".to_string())
@@ -305,11 +362,12 @@ mod tests {
         let config = CacheConfig {
             enabled: false,
             max_capacity: 100,
+            ..Default::default()
         };
-        let cache = CacheLayer::new(config);
+        let cache = CacheLayer::new(config).await;
 
         cache.put_abi("c1", "v1".to_string()).await;
-        let val = cache.get_abi("c1").await;
+        let val = cache.get_abi("c1", false).await;
         assert!(val.is_none());
 
         cache.put_verification("h1", "v1".to_string()).await;
@@ -322,8 +380,9 @@ mod tests {
         let config = CacheConfig {
             enabled: true,
             max_capacity: 100,
+            ..Default::default()
         };
-        let cache = CacheLayer::new(config);
+        let cache = CacheLayer::new(config).await;
 
         // Test put and get
         cache
@@ -351,8 +410,9 @@ mod tests {
         let config = CacheConfig {
             enabled: true,
             max_capacity: 100,
+            ..Default::default()
         };
-        let cache = CacheLayer::new(config);
+        let cache = CacheLayer::new(config).await;
 
         // Put same key in different namespaces
         cache
@@ -383,8 +443,9 @@ mod tests {
         let config = CacheConfig {
             enabled: false,
             max_capacity: 100,
+            ..Default::default()
         };
-        let cache = CacheLayer::new(config);
+        let cache = CacheLayer::new(config).await;
 
         cache
             .put("system", "key1", "value1".to_string(), None)

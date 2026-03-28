@@ -183,6 +183,10 @@ pub static VERIFICATION_CACHE_MISSES: Lazy<IntCounter> = counter!(
     "Verification cache misses"
 );
 
+pub static REDIS_CACHE_HITS: Lazy<IntCounter> = counter!("redis_cache_hits_total", "Redis cache hits");
+pub static REDIS_CACHE_MISSES: Lazy<IntCounter> =
+    counter!("redis_cache_misses_total", "Redis cache misses");
+
 // ── Resources ────────────────────────────────────────────────────────────────────
 pub static RESOURCE_RECORDINGS: Lazy<IntCounter> =
     counter!("resource_recordings_total", "Resource usage recordings");
@@ -326,6 +330,8 @@ pub fn register_all(r: &Registry) -> prometheus::Result<()> {
     r.register(Box::new(ABI_CACHE_MISSES.clone()))?;
     r.register(Box::new(VERIFICATION_CACHE_HITS.clone()))?;
     r.register(Box::new(VERIFICATION_CACHE_MISSES.clone()))?;
+    r.register(Box::new(REDIS_CACHE_HITS.clone()))?;
+    r.register(Box::new(REDIS_CACHE_MISSES.clone()))?;
     r.register(Box::new(RESOURCE_RECORDINGS.clone()))?;
     r.register(Box::new(RESOURCE_ALERTS_FIRED.clone()))?;
     r.register(Box::new(RESOURCE_FORECAST_RUNS.clone()))?;
