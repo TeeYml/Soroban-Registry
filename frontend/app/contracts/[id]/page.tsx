@@ -24,6 +24,7 @@ import {
   Database,
   Code2,
   Layers,
+  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import { useCopy } from "@/hooks/useCopy";
@@ -37,10 +38,11 @@ import MaintenanceBanner from "@/components/MaintenanceBanner";
 import CustomMetricsPanel from "@/components/CustomMetricsPanel";
 import DeprecationBanner from "@/components/DeprecationBanner";
 import ReleaseNotesPanel from "@/components/ReleaseNotesPanel";
+import ContractComments from "@/components/ContractComments";
 import { useContractAutoRefresh } from "@/hooks/useContractAutoRefresh";
 
 const NETWORKS: Network[] = ["mainnet", "testnet", "futurenet"];
-const TAB_IDS = ["overview", "abi", "source", "deployments", "analytics", "history"] as const;
+const TAB_IDS = ["overview", "abi", "source", "deployments", "analytics", "history", "discussion"] as const;
 type TabId = (typeof TAB_IDS)[number];
 
 // TODO: Replace with real API call when maintenance endpoint is available
@@ -187,6 +189,7 @@ function ContractDetailsContent() {
     deployments: { label: "Deployments", icon: Globe },
     analytics: { label: "Analytics", icon: BarChart3 },
     history: { label: "History", icon: History },
+    discussion: { label: "Discussion", icon: MessageSquare },
   };
 
   // Subscribe to real-time contract updates
@@ -690,6 +693,12 @@ function ContractDetailsContent() {
             </section>
             <ReleaseNotesPanel contractId={contract.id} />
           </div>
+        )}
+
+        {activeTab === "discussion" && (
+          <section className="bg-card rounded-2xl border border-border p-6">
+            <ContractComments contractId={contract.id} />
+          </section>
         )}
       </div>
     </div>

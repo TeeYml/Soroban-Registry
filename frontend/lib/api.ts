@@ -1261,6 +1261,104 @@ export const api = {
       throw new Error(`Failed to delete favorite search: ${response.statusText}`);
     }
   },
+
+  // ── Contract Comments / Discussion (Issue #516) ───────────────────────────
+
+  async getComments(contractId: string): Promise<CommentListResponse> {
+    if (USE_MOCKS || typeof window !== 'undefined') {
+      return Promise.resolve(getLocalComments(contractId));
+    }
+    return handleApiCall<CommentListResponse>(
+      () => fetch(`${API_URL}/api/contracts/${contractId}/comments`),
+      `/api/contracts/${contractId}/comments`
+    );
+  },
+
+  async postComment(
+    contractId: string,
+    body: string,
+    parentId?: string
+  ): Promise<Comment> {
+    if (USE_MOCKS || typeof window !== 'undefined') {
+      const comment: Comment = {
+        id: `local-${Date.now()}`,
+        contract_id: contractId,
+        parent_id: parentId ?? null,
+        author: 'You',
+        body,
+        created_at: new Date().toISOString(),
+        score: 0,
+        flagged: false,
+        flag_count: 0,
+      };
+      const stored = getLocalComments(contractId);
+      stored.items.unshift(comment);
+      stored.total += 1;
+      setLocalComments(contractId, stored);
+      return Promise.resolve(comment);
+    }
+    return handleApiCall<Comment>(
+      () =>
+        fetch(`${API_URL}/api/contracts/${contractId}/comments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body, parent_id: parentId }),
+        }),
+      `/api/contracts/${contractId}/comments`
+    );
+  },
+
+  async voteComment(
+    commentId: string,
+    contractId: string,
+    direction: 'up' | 'down'
+  ): Promise<CommentVote> {
+    if (USE_MOCKS || typeof window !== 'undefined') {
+      const stored = getLocalComments(contractId);
+      stored.items = stored.items.map((c) =>
+        c.id === commentId
+          ? { ...c, score: c.score + (direction === 'up' ? 1 : -1) }
+          : c
+      );
+      setLocalComments(contractId, stored);
+      return Promise.resolve({ comment_id: commentId, direction });
+    }
+    return handleApiCall<CommentVote>(
+      () =>
+        fetch(`${API_URL}/api/comments/${commentId}/vote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ direction }),
+        }),
+      `/api/comments/${commentId}/vote`
+    );
+  },
+
+  async flagComment(
+    commentId: string,
+    contractId: string,
+    reason: string
+  ): Promise<CommentFlag> {
+    if (USE_MOCKS || typeof window !== 'undefined') {
+      const stored = getLocalComments(contractId);
+      stored.items = stored.items.map((c) =>
+        c.id === commentId
+          ? { ...c, flagged: true, flag_count: c.flag_count + 1 }
+          : c
+      );
+      setLocalComments(contractId, stored);
+      return Promise.resolve({ comment_id: commentId, reason });
+    }
+    return handleApiCall<CommentFlag>(
+      () =>
+        fetch(`${API_URL}/api/comments/${commentId}/flag`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }),
+        }),
+      `/api/comments/${commentId}/flag`
+    );
+  },
 };
 
 export interface Template {
@@ -1577,4 +1675,85 @@ export interface FavoriteSearch {
 export interface SaveFavoriteSearchRequest {
   name: string;
   query: QueryNode;
+}
+
+// ─── Comment / Discussion (Issue #516) ───────────────────────────────────────
+
+export interface Comment {
+  id: string;
+  contract_id: string;
+  parent_id: string | null;
+  author: string;
+  body: string;
+  created_at: string;
+  score: number;
+  flagged: boolean;
+  flag_count: number;
+}
+
+export interface CommentVote {
+  comment_id: string;
+  direction: 'up' | 'down';
+}
+
+export interface CommentFlag {
+  comment_id: string;
+  reason: string;
+}
+
+export interface CommentListResponse {
+  items: Comment[];
+  total: number;
+}
+
+const COMMENT_STORAGE_PREFIX = 'soroban_comments_';
+
+function seedComments(contractId: string): CommentListResponse {
+  const now = new Date();
+  const older = new Date(now.getTime() - 1000 * 60 * 60 * 24).toISOString();
+  const root: Comment = {
+    id: 'seed-1',
+    contract_id: contractId,
+    parent_id: null,
+    author: 'GDRXE7BFEBOWQ3BHPNFTUOBCIGGKCGJPNIDZWNOSIROWKJZTIVWY5WYP',
+    body: 'Great contract. Works well with the token factory. One thing to note: calling `transfer` with a zero amount will silently succeed rather than returning an error.',
+    created_at: older,
+    score: 4,
+    flagged: false,
+    flag_count: 0,
+  };
+  const reply: Comment = {
+    id: 'seed-2',
+    contract_id: contractId,
+    parent_id: 'seed-1',
+    author: 'GCO2IP3MJNUOKS4PUDI4C7LGGMQDJGXG3COYX3WSB4HHNAHKYV5YL3VC',
+    body: 'Confirmed. Also worth checking the `allowance` return value before calling `transfer_from` — the ABI says `i128` but the error is opaque when allowance is exceeded.',
+    created_at: now.toISOString(),
+    score: 2,
+    flagged: false,
+    flag_count: 0,
+  };
+  return { items: [root, reply], total: 2 };
+}
+
+function getLocalComments(contractId: string): CommentListResponse {
+  if (typeof window === 'undefined') return { items: [], total: 0 };
+  const key = `${COMMENT_STORAGE_PREFIX}${contractId}`;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) {
+    const seeded = seedComments(contractId);
+    window.localStorage.setItem(key, JSON.stringify(seeded));
+    return seeded;
+  }
+  try {
+    return JSON.parse(raw) as CommentListResponse;
+  } catch {
+    return { items: [], total: 0 };
+  }
+}
+
+function setLocalComments(contractId: string, data: CommentListResponse): void {
+  if (typeof window === 'undefined') return;
+  const key = `${COMMENT_STORAGE_PREFIX}${contractId}`;
+  window.localStorage.setItem(key, JSON.stringify(data));
 }
