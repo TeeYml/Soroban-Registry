@@ -38,7 +38,7 @@ use axum::{
     extract::{connect_info::ConnectInfo, State},
     http::{
         header::{AUTHORIZATION, RETRY_AFTER},
-        HeaderName, HeaderValue, Request,
+        HeaderName, HeaderValue, Method, Request,
     },
     middleware::Next,
     response::{IntoResponse, Response},

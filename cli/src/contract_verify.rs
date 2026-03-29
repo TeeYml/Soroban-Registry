@@ -16,7 +16,7 @@ pub struct VerificationResult {
     pub network: String,
     pub name: Option<String>,
     pub is_verified: bool,
-    pub verification_status: String,   // "verified" | "unverified" | "pending" | "failed"
+    pub verification_status: String, // "verified" | "unverified" | "pending" | "failed"
     pub security_scan: Option<SecurityScan>,
     pub audit: Option<AuditInfo>,
     pub publisher: Option<String>,
@@ -26,7 +26,7 @@ pub struct VerificationResult {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SecurityScan {
-    pub status: String,           // "clean" | "warning" | "critical"
+    pub status: String, // "clean" | "warning" | "critical"
     pub vulnerabilities: u64,
     pub warnings: u64,
     pub last_scanned_at: Option<String>,
@@ -109,7 +109,10 @@ pub async fn run(api_url: &str, address: &str, network: &str, json: bool) -> Res
         anyhow::bail!("Registry API error ({}): {}", status, err);
     }
 
-    let raw: Value = response.json().await.context("Failed to parse registry response")?;
+    let raw: Value = response
+        .json()
+        .await
+        .context("Failed to parse registry response")?;
 
     // The API may return either a paginated list or a single object
     let contract = extract_contract(&raw, address)?;
@@ -140,9 +143,10 @@ fn extract_contract<'a>(raw: &'a Value, address: &str) -> Result<Value> {
             .iter()
             .find(|c| {
                 c["contract_id"].as_str().map_or(false, |id| id == address)
-                    || c["network_configs"]
-                        .as_object()
-                        .map_or(false, |nc| nc.values().any(|v| v["contract_id"].as_str() == Some(address)))
+                    || c["network_configs"].as_object().map_or(false, |nc| {
+                        nc.values()
+                            .any(|v| v["contract_id"].as_str() == Some(address))
+                    })
             })
             .cloned()
             .ok_or_else(|| {
@@ -191,11 +195,7 @@ fn build_result(contract: &Value, address: &str, network: &str) -> VerificationR
 }
 
 /// Try to fetch verification detail endpoint. Non-fatal — returns None on error.
-async fn fetch_detail(
-    api_url: &str,
-    client: &reqwest::Client,
-    contract: &Value,
-) -> Option<Value> {
+async fn fetch_detail(api_url: &str, client: &reqwest::Client, contract: &Value) -> Option<Value> {
     let id = contract["id"]
         .as_str()
         .or(contract["contract_id"].as_str())?;
@@ -245,7 +245,11 @@ fn print_human(result: &VerificationResult, detail: &Option<Value>) {
     if let Some(name) = &result.name {
         println!("  {}  {}", "Contract:".bold(), name.bold());
     }
-    println!("  {}   {}", "Address:".bold(), result.address.bright_black());
+    println!(
+        "  {}   {}",
+        "Address:".bold(),
+        result.address.bright_black()
+    );
     println!("  {}   {}", "Network:".bold(), result.network.bright_blue());
 
     if let Some(publisher) = &result.publisher {
@@ -260,25 +264,15 @@ fn print_human(result: &VerificationResult, detail: &Option<Value>) {
 
     // ── Verification status ──────────────────────────────────────────────────
     let (icon, status_label) = if result.is_verified {
-        (
-            "✔".green().bold(),
-            "VERIFIED".green().bold(),
-        )
+        ("✔".green().bold(), "VERIFIED".green().bold())
     } else {
-        (
-            "✘".red().bold(),
-            "UNVERIFIED".red().bold(),
-        )
+        ("✘".red().bold(), "UNVERIFIED".red().bold())
     };
 
     println!("  {} Verification Status: {}", icon, status_label);
 
     if let Some(verified_at) = &result.verified_at {
-        println!(
-            "     {} {}",
-            "Last updated:".dimmed(),
-            verified_at.dimmed()
-        );
+        println!("     {} {}", "Last updated:".dimmed(), verified_at.dimmed());
     }
 
     println!();
@@ -292,23 +286,31 @@ fn print_human(result: &VerificationResult, detail: &Option<Value>) {
         .unwrap_or("unknown");
 
     let scan_label = match scan_status {
-        "clean"    => "Clean — no vulnerabilities found".green().bold(),
-        "warning"  => "Warning — potential issues detected".yellow().bold(),
+        "clean" => "Clean — no vulnerabilities found".green().bold(),
+        "warning" => "Warning — potential issues detected".yellow().bold(),
         "critical" => "Critical — vulnerabilities detected".red().bold(),
-        _          => "Not scanned".dimmed().bold(),
+        _ => "Not scanned".dimmed().bold(),
     };
 
     println!("  Status: {}", scan_label);
 
     if let Some(d) = detail {
-        let vulns   = d["security_scan"]["vulnerabilities"].as_u64().unwrap_or(0);
+        let vulns = d["security_scan"]["vulnerabilities"].as_u64().unwrap_or(0);
         let warnings = d["security_scan"]["warnings"].as_u64().unwrap_or(0);
 
         if scan_status != "unknown" {
             println!(
                 "  Vulnerabilities: {}  Warnings: {}",
-                if vulns > 0 { vulns.to_string().red().bold() } else { vulns.to_string().green().bold() },
-                if warnings > 0 { warnings.to_string().yellow().bold() } else { warnings.to_string().green().bold() }
+                if vulns > 0 {
+                    vulns.to_string().red().bold()
+                } else {
+                    vulns.to_string().green().bold()
+                },
+                if warnings > 0 {
+                    warnings.to_string().yellow().bold()
+                } else {
+                    warnings.to_string().green().bold()
+                }
             );
         }
 
@@ -316,14 +318,14 @@ fn print_human(result: &VerificationResult, detail: &Option<Value>) {
             if !findings.is_empty() {
                 println!("\n  {}", "Findings:".bold());
                 for f in findings.iter().take(5) {
-                    let sev   = f["severity"].as_str().unwrap_or("info");
+                    let sev = f["severity"].as_str().unwrap_or("info");
                     let title = f["title"].as_str().unwrap_or("Unknown finding");
                     let sev_label = match sev {
                         "critical" => format!("[{}]", sev.to_uppercase()).red().bold(),
-                        "high"     => format!("[{}]", sev.to_uppercase()).red(),
-                        "medium"   => format!("[{}]", sev.to_uppercase()).yellow(),
-                        "low"      => format!("[{}]", sev.to_uppercase()).bright_black(),
-                        _          => format!("[{}]", sev.to_uppercase()).normal(),
+                        "high" => format!("[{}]", sev.to_uppercase()).red(),
+                        "medium" => format!("[{}]", sev.to_uppercase()).yellow(),
+                        "low" => format!("[{}]", sev.to_uppercase()).bright_black(),
+                        _ => format!("[{}]", sev.to_uppercase()).normal(),
                     };
                     println!("    {} {}", sev_label, title);
                     if let Some(desc) = f["description"].as_str() {
@@ -343,16 +345,8 @@ fn print_human(result: &VerificationResult, detail: &Option<Value>) {
 
         let audit_passed = d["audit"]["passed"].as_bool();
         match audit_passed {
-            Some(true) => println!(
-                "  {} {}",
-                "✔".green(),
-                "Audit passed".green().bold()
-            ),
-            Some(false) => println!(
-                "  {} {}",
-                "✘".red(),
-                "Audit failed".red().bold()
-            ),
+            Some(true) => println!("  {} {}", "✔".green(), "Audit passed".green().bold()),
+            Some(false) => println!("  {} {}", "✘".red(), "Audit failed".red().bold()),
             None => println!("  {}", "No audit record".dimmed()),
         }
 

@@ -1,10 +1,9 @@
-use crate::state::{AppState, RealtimeEvent};
+use crate::state::AppState;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
     extract::State,
 };
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::broadcast;
 
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
@@ -34,10 +33,7 @@ async fn handle_connection(socket: WebSocket, state: AppState) {
         match msg {
             axum::extract::ws::Message::Text(text) => {
                 if text == "ping" {
-                    let _ = receiver
-                        .get_mut()
-                        .send(axum::extract::ws::Message::Text("pong".to_string()))
-                        .await;
+                    // Ignore explicit ping text; heartbeat stream still keeps connection alive.
                 }
             }
             axum::extract::ws::Message::Close(_) => break,

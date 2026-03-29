@@ -29,8 +29,9 @@ export default function RealtimeProvider({ children }: RealtimeProviderProps) {
     });
 
     // Handle deployment events
-    const unsubscribeDeploy = wsService.on('contract_deployed', (data: ContractDeploymentEvent) => {
-      setNotifications(prev => [data, ...prev].slice(0, 50)); // Keep last 50
+    const unsubscribeDeploy = wsService.on('contract_deployed', (data: unknown) => {
+      const typedData = data as ContractDeploymentEvent;
+      setNotifications(prev => [typedData, ...prev].slice(0, 50)); // Keep last 50
       setUnreadCount(prev => prev + 1);
 
       // Show desktop notification if enabled
@@ -38,33 +39,34 @@ export default function RealtimeProvider({ children }: RealtimeProviderProps) {
       if (preferences) {
         const prefs = JSON.parse(preferences);
         if (prefs.enableDesktopNotifications && prefs.enableDeploymentNotifications) {
-          sendDesktopNotification({
-            title: 'New Contract Deployed',
-            options: {
-              body: `${data.contractName} v${data.version} by ${data.publisher}`,
-              tag: `contract-${data.contractId}`,
+          sendDesktopNotification(
+            'New Contract Deployed',
+            {
+              body: `${typedData.contractName} v${typedData.version} by ${typedData.publisher}`,
+              tag: `contract-${typedData.contractId}`,
               requireInteraction: false,
-            },
-          });
+            }
+          );
         }
       }
     });
 
     // Handle update events
-    const unsubscribeUpdate = wsService.on('contract_updated', (data: Record<string, unknown>) => {
+    const unsubscribeUpdate = wsService.on('contract_updated', (data: unknown) => {
+      const typedData = data as Record<string, unknown>;
       const preferences = localStorage.getItem('notification-preferences');
       if (preferences) {
         const prefs = JSON.parse(preferences);
         if (prefs.enableDesktopNotifications && 
             prefs.enableUpdateNotifications &&
-            prefs.updateTypes.includes(data.updateType)) {
-          sendDesktopNotification({
-            title: `Contract Update: ${data.updateType}`,
-            options: {
-              body: `Contract ${data.contractId} has been updated`,
-              tag: `update-${data.contractId}`,
-            },
-          });
+            prefs.updateTypes.includes(typedData.updateType)) {
+          sendDesktopNotification(
+            `Contract Update: ${typedData.updateType}`,
+            {
+              body: `Contract ${typedData.contractId} has been updated`,
+              tag: `update-${typedData.contractId}`,
+            }
+          );
         }
       }
     });
@@ -86,7 +88,8 @@ export default function RealtimeProvider({ children }: RealtimeProviderProps) {
     setUnreadCount(0);
   }, []);
 
-  const markAsRead = useCallback((_notificationId: string) => {
+  const markAsRead = useCallback(() => {
+    // Mark notification as read and decrement unread count
     if (unreadCount > 0) {
       setUnreadCount(prev => prev - 1);
     }

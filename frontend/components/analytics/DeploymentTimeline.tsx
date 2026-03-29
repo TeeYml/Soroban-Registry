@@ -4,13 +4,11 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { api, Contract, Network } from '@/lib/api';
 import { 
   Calendar, 
-  Filter, 
   Info, 
   ChevronLeft, 
   ChevronRight, 
   Clock, 
   ExternalLink,
-  Search,
   Zap
 } from 'lucide-react';
 import Link from 'next/link';
@@ -162,7 +160,7 @@ export default function DeploymentTimeline({ initialData = [] }: DeploymentTimel
           {/* Time Window Select */}
           <select 
             value={viewWindow}
-            onChange={(e) => setViewWindow(e.target.value as any)}
+            onChange={(e) => setViewWindow(e.target.value as '7d'|'30d'|'90d'|'all')}
             className="bg-background border border-border rounded-xl px-3 py-1.5 text-xs font-semibold text-foreground focus:ring-2 focus:ring-primary outline-none cursor-pointer"
           >
             <option value="7d">Last 7 Days</option>
@@ -214,7 +212,7 @@ export default function DeploymentTimeline({ initialData = [] }: DeploymentTimel
             style={{ width: filteredContracts.length * 40 + 'px' }}
           >
             {/* Markers */}
-            {filteredContracts.map((contract, index) => {
+            {filteredContracts.map((contract) => {
               const timestamp = new Date(contract.created_at).getTime();
               const range = timeBounds.max - timeBounds.min || 1;
               const percent = ((timestamp - timeBounds.min) / range) * 100;

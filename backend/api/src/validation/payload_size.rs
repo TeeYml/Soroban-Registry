@@ -77,7 +77,7 @@ pub async fn payload_size_validation_middleware(
                         "max_size_mb": max_mb,
                         "max_size_bytes": max_bytes,
                         "provided_size_bytes": size,
-                        "correlation_id": correlation_id
+                        "correlation_id": request_id
                     }))
                     .into_response());
                 }

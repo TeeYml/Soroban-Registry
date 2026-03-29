@@ -1,3 +1,18 @@
+mod aggregation;
+mod analytics;
+mod audit_handlers;
+mod audit_routes;
+mod benchmark_engine;
+mod benchmark_handlers;
+mod benchmark_routes;
+mod checklist;
+mod detector;
+mod error;
+mod handlers;
+mod incident_handlers;
+mod incident_routes;
+mod models;
+mod rate_limit;
 #![warn(unused_imports)]
 
 mod ab_test_handlers;
@@ -11,6 +26,7 @@ mod cache;
 mod canary_handlers;
 mod compatibility_testing_handlers;
 mod contract_events;
+mod contributor_handlers;
 mod db_monitoring;
 
 mod activity_feed_handlers;
@@ -38,6 +54,7 @@ mod onchain_verification;
 #[cfg(feature = "openapi")]
 mod openapi;
 mod org_handlers;
+mod patch_handlers;
 mod performance_handlers;
 mod rate_limit;
 mod release_notes_handlers;
@@ -45,6 +62,7 @@ mod release_notes_routes;
 pub mod request_tracing;
 mod resource_handlers;
 mod resource_tracking;
+mod recommendation_handlers;
 mod routes;
 pub mod security_log;
 pub mod signing_handlers;
@@ -52,6 +70,7 @@ mod similarity_handlers;
 mod simulation;
 mod simulation_handlers;
 mod state;
+
 mod type_safety;
 mod validation;
 mod websocket;
@@ -177,7 +196,7 @@ async fn main() -> Result<()> {
     let je = job_engine.clone();
     tokio::spawn(async move { je.run_worker(job_rx).await });
 
-    let state = AppState::new(pool.clone(), registry, job_engine, is_shutting_down.clone()).await;
+    let state = AppState::new(pool.clone(), registry, job_engine, is_shutting_down.clone()).await?;
 
     // Spawn the background DB and cache monitoring task
     db_monitoring::spawn_db_monitoring_task(pool.clone(), state.cache.clone());
@@ -242,7 +261,10 @@ async fn main() -> Result<()> {
         .merge(routes::organization_routes())
         .merge(routes::contract_routes())
         .merge(routes::publisher_routes())
+        .merge(routes::contributor_routes())
         .merge(routes::health_routes())
+        .merge(routes::migration_routes())
+        .merge(incident_routes::incident_routes())
         .merge(routes::network_routes())
         .merge(routes::openapi_routes())
         .merge(routes::health_monitor_routes())
@@ -252,6 +274,7 @@ async fn main() -> Result<()> {
         .merge(routes::canary_routes())
         .merge(routes::ab_test_routes())
         .merge(routes::performance_routes())
+        .merge(multisig_routes::routes())
         .merge(routes::observability_routes())
         .merge(routes::websocket_routes())
         .merge(release_notes_routes::release_notes_routes())

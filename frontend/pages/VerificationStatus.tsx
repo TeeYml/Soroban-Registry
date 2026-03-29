@@ -8,6 +8,8 @@ import StatusTracker from '@/components/verification/StatusTracker';
 import VerificationBadge from '@/components/verification/VerificationBadge';
 import VerificationSummary from '@/components/verification/VerificationSummary';
 import { useToast } from '@/hooks/useToast';
+
+export const dynamic = 'force-dynamic';
 import {
   getVerificationStatus,
   simulateStatusProgression,

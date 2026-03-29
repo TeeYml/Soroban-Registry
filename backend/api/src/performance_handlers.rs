@@ -862,8 +862,6 @@ async fn build_performance_summary(
     .await
     .map_err(|e| db_err("get unresolved performance alerts", e))?;
 
-    let comparisons = fetch_comparisons(state, contract_uuid, None, 8).await?;
-
     Ok(ContractPerformanceSummaryResponse {
         contract_id: contract_uuid,
         latest_benchmarks: latest_benchmark_rows
@@ -874,13 +872,13 @@ async fn build_performance_summary(
             .into_iter()
             .map(metric_snapshot_from_row)
             .collect(),
-        trends: trend_rows.into_iter().map(trend_from_row).collect(),
+        trend_points: trend_rows.into_iter().map(trend_from_row).collect(),
         regressions: regression_rows
             .into_iter()
             .map(regression_from_row)
             .collect(),
-        comparisons,
-        unresolved_alerts,
+        recent_anomalies: Vec::new(),
+        recent_alerts: unresolved_alerts,
     })
 }
 
@@ -936,7 +934,7 @@ fn benchmark_from_row(row: BenchmarkRow) -> PerformanceBenchmark {
         contract_version_id: row.contract_version_id,
         version: row.version,
         benchmark_name: row.benchmark_name,
-        execution_time_ms: decimal_to_f64(row.execution_time_ms),
+        execution_time_ms: row.execution_time_ms,
         gas_used: row.gas_used,
         sample_size: row.sample_size,
         source: row.source,
@@ -949,9 +947,9 @@ fn metric_snapshot_from_row(row: MetricSnapshotRow) -> PerformanceMetricSnapshot
     PerformanceMetricSnapshot {
         metric_type: row.metric_type,
         benchmark_name: row.benchmark_name,
-        latest_value: decimal_to_f64(row.latest_value),
-        previous_value: row.previous_value.map(decimal_to_f64),
-        change_percent: row.change_percent.map(decimal_to_f64),
+        latest_value: row.latest_value,
+        previous_value: row.previous_value,
+        change_percent: row.change_percent,
         recorded_at: row.recorded_at,
     }
 }
@@ -961,8 +959,8 @@ fn trend_from_row(row: TrendPointRow) -> PerformanceTrendPoint {
         bucket_start: row.bucket_start,
         bucket_end: row.bucket_end,
         benchmark_name: row.benchmark_name,
-        avg_execution_time_ms: decimal_to_f64(row.avg_execution_time_ms),
-        avg_gas_used: decimal_to_f64(row.avg_gas_used),
+        avg_execution_time_ms: row.avg_execution_time_ms,
+        avg_gas_used: row.avg_gas_used,
         sample_count: row.sample_count,
     }
 }
@@ -972,10 +970,8 @@ fn regression_from_row(row: RegressionRow) -> PerformanceRegression {
         benchmark_name: row.benchmark_name,
         current_version: row.current_version,
         previous_version: row.previous_version,
-        execution_time_regression_percent: row
-            .execution_time_regression_percent
-            .map(decimal_to_f64),
-        gas_regression_percent: row.gas_regression_percent.map(decimal_to_f64),
+        execution_time_regression_percent: row.execution_time_regression_percent,
+        gas_regression_percent: row.gas_regression_percent,
         severity: row.severity,
         detected_at: row.detected_at,
     }
@@ -987,18 +983,14 @@ fn comparison_from_row(row: ComparisonRow) -> PerformanceComparisonEntry {
         contract_name: row.contract_name,
         category: row.category,
         benchmark_name: row.benchmark_name,
-        avg_execution_time_ms: decimal_to_f64(row.avg_execution_time_ms),
-        avg_gas_used: decimal_to_f64(row.avg_gas_used),
+        avg_execution_time_ms: row.avg_execution_time_ms,
+        avg_gas_used: row.avg_gas_used,
         sample_count: row.sample_count,
     }
 }
 
 fn decimal_from_f64(value: f64) -> Decimal {
     Decimal::try_from(value).unwrap_or_default()
-}
-
-fn decimal_to_f64(value: Decimal) -> f64 {
-    value.to_string().parse::<f64>().unwrap_or_default()
 }
 
 fn parse_uuid(id: &str, label: &str) -> Result<Uuid, ApiError> {

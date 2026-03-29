@@ -4,8 +4,7 @@ use crate::{
     ab_test_handlers, auth, auth_handlers, batch_verify_handlers, breaking_changes,
     canary_handlers, category_handlers, compatibility_testing_handlers, contract_events,
     custom_metrics_handlers, deprecation_handlers, handlers, metrics_handler, migration_handlers,
-    performance_handlers, resource_handlers, similarity_handlers, simulation_handlers,
-    state::AppState, websocket,
+    performance_handlers, resource_handlers, similarity_handlers, state::AppState, websocket,
 };
 
 use axum::{
@@ -76,9 +75,36 @@ pub fn contract_routes() -> Router<AppState> {
             "/api/contracts/:id/versions",
             get(handlers::get_contract_versions).post(handlers::create_contract_version),
         )
+        // Static segment "compare" must be registered before the dynamic ":version" route
+        // so Axum resolves it correctly.
+        .route(
+            "/api/contracts/:id/versions/compare",
+            get(handlers::compare_contract_versions),
+        )
+        .route(
+            "/api/contracts/:id/versions/:version",
+            get(handlers::get_specific_contract_version),
+        )
         .route(
             "/api/contracts/:id/changelog",
             get(handlers::get_contract_changelog),
+        )
+        // Differential update pipeline (Issue #501)
+        .route(
+            "/api/contracts/:id/patches",
+            get(patch_handlers::list_contract_patches),
+        )
+        .route(
+            "/api/contracts/:id/patches/:from_version/:to_version",
+            get(patch_handlers::get_patch_between_versions),
+        )
+        .route(
+            "/api/contracts/:id/patches/reconstruct",
+            post(patch_handlers::reconstruct_contract_version),
+        )
+        .route(
+            "/api/contracts/patches/bulk-apply",
+            post(patch_handlers::bulk_apply_patches),
         )
         .route(
             "/api/contracts/:id/versions/:version/source",
@@ -124,7 +150,7 @@ pub fn contract_routes() -> Router<AppState> {
         )
         .route(
             "/api/analytics/dashboard",
-            get(handlers::get_dashboard_analytics),
+            get(analytics_handlers::get_analytics_summary),
         )
         .route(
             "/api/contracts/:id/dependencies",
@@ -145,6 +171,14 @@ pub fn contract_routes() -> Router<AppState> {
         .route(
             "/api/contracts/:id/similar",
             get(similarity_handlers::get_similar_contracts),
+        )
+        .route(
+            "/api/contracts/:id/recommendations",
+            get(recommendation_handlers::get_contract_recommendations),
+        )
+        .route(
+            "/contracts/:id/recommendations",
+            get(recommendation_handlers::get_contract_recommendations),
         )
         .route(
             "/contracts/:id/similar",
@@ -221,6 +255,27 @@ pub fn contract_routes() -> Router<AppState> {
             "/api/contracts/simulate-deploy",
             post(simulation_handlers::simulate_deploy),
         )
+        // Review system endpoints
+        .route(
+            "/api/contracts/:id/reviews",
+            get(handlers::reviews::get_reviews).post(handlers::reviews::create_review),
+        )
+        .route(
+            "/api/contracts/:id/reviews/:review_id/vote",
+            post(handlers::reviews::vote_review),
+        )
+        .route(
+            "/api/contracts/:id/reviews/:review_id/flag",
+            post(handlers::reviews::flag_review),
+        )
+        .route(
+            "/api/contracts/:id/reviews/:review_id/moderate",
+            post(handlers::reviews::moderate_review),
+        )
+        .route(
+            "/api/contracts/:id/rating-stats",
+            get(handlers::reviews::get_rating_stats),
+        )
         .merge(favorite_routes())
 }
 
@@ -265,6 +320,24 @@ pub fn publisher_routes() -> Router<AppState> {
         .route(
             "/api/publishers/:id/contracts",
             get(handlers::get_publisher_contracts),
+        )
+}
+
+pub fn contributor_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/api/contributors",
+            get(contributor_handlers::list_contributors)
+                .post(contributor_handlers::create_contributor),
+        )
+        .route(
+            "/api/contributors/:id",
+            get(contributor_handlers::get_contributor)
+                .put(contributor_handlers::update_contributor),
+        )
+        .route(
+            "/api/contributors/:id/contracts",
+            get(contributor_handlers::get_contributor_contracts),
         )
 }
 
@@ -340,6 +413,10 @@ pub fn compatibility_dashboard_routes() -> Router<AppState> {
         "/api/compatibility-dashboard",
         get(compatibility_testing_handlers::get_compatibility_dashboard),
     )
+}
+
+pub fn category_routes() -> Router<AppState> {
+    Router::new().route("/api/categories", get(category_handlers::list_categories))
 }
 
 pub fn canary_routes() -> Router<AppState> {
@@ -459,6 +536,11 @@ pub fn admin_routes() -> Router<AppState> {
         .route(
             "/api/admin/categories/:id",
             put(category_handlers::update_category).delete(category_handlers::delete_category),
+        )
+        // Version revert (issue #486) – admin-only
+        .route(
+            "/api/admin/contracts/:id/versions/:version/revert",
+            post(handlers::revert_contract_version),
         )
         .route_layer(middleware::from_fn(auth::require_admin))
 }

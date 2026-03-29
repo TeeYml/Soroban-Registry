@@ -247,7 +247,7 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
     if (node.field === 'network') {
       return (
         <select 
-          value={node.value}
+          value={typeof node.value === 'string' ? node.value : String(node.value || '')}
           onChange={(e) => handleUpdateCondition(path, { value: e.target.value })}
           className="bg-background text-sm px-2 py-1 rounded border border-border outline-none focus:ring-1 focus:ring-primary flex-1 min-w-[150px]"
         >
@@ -260,7 +260,7 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
     if (node.field === 'category') {
       return (
         <select 
-          value={node.value}
+          value={typeof node.value === 'string' ? node.value : String(node.value || '')}
           onChange={(e) => handleUpdateCondition(path, { value: e.target.value })}
           className="bg-background text-sm px-2 py-1 rounded border border-border outline-none focus:ring-1 focus:ring-primary flex-1 min-w-[150px]"
         >
@@ -286,7 +286,7 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
     return (
       <input 
         type="text"
-        value={node.value}
+        value={typeof node.value === 'string' ? node.value : String(node.value || '')}
         onChange={(e) => handleUpdateCondition(path, { value: e.target.value })}
         placeholder="Enter value..."
         className="bg-background text-sm px-3 py-1 rounded border border-border outline-none focus:ring-1 focus:ring-primary flex-1 min-w-[150px]"

@@ -8,17 +8,14 @@ import ContractCardSkeleton from '@/components/ContractCardSkeleton';
 import { ActiveFilters } from '@/components/contracts/ActiveFilters';
 import { FilterPanel } from '@/components/contracts/FilterPanel';
 import { ResultsCount } from '@/components/contracts/ResultsCount';
+import { SearchBar } from '@/components/contracts/SearchBar';
 import { SortDropdown, SortBy } from '@/components/contracts/SortDropdown';
 import TagAutocomplete from '@/components/tags/TagAutocomplete';
-import { Filter, Package, SlidersHorizontal, X, Search, Sparkles, CheckCircle, Users } from 'lucide-react';
+import { Filter, Package, SlidersHorizontal, X, Sparkles, CheckCircle, Users } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import QueryBuilder from '@/components/contracts/QueryBuilder';
-import QuerySummary from '@/components/contracts/QuerySummary';
 import FavoriteSearches from '@/components/contracts/FavoriteSearches';
-import { useSearchUrlSync } from '@/hooks/useSearchUrlSync';
-import { QueryNode } from '@/lib/api';
-import { useMutation } from '@tanstack/react-query';
 
 const DEFAULT_PAGE_SIZE = 12;
 const CATEGORY_OPTIONS = [
@@ -38,6 +35,8 @@ const LANGUAGE_OPTIONS = [
   'AssemblyScript',
   'Move',
 ];
+
+const ALL_NETWORK_FILTERS = ['mainnet', 'testnet', 'futurenet'] as const;
 
 function parseCsvOrMulti(values: string[]) {
   return values
@@ -138,7 +137,7 @@ function getInitialFilters(searchParams: URLSearchParams): ContractsUiFilters {
   const categories = parseCsvOrMulti(searchParams.getAll('category'));
   const languages = parseCsvOrMulti(searchParams.getAll('language'));
   const tags = parseCsvOrMulti(searchParams.getAll('tag'));
-  const parsedNetworks = parseCsvOrMulti(searchParams.getAll('network')).filter(
+  const networks = parseCsvOrMulti(searchParams.getAll('network')).filter(
     (network): network is NonNullable<ContractSearchParams['network']> =>
       network === 'mainnet' || network === 'testnet' || network === 'futurenet',
   );
@@ -180,7 +179,10 @@ export function ContractsContent() {
   const { query, categories, languages, tags, networks, author, verified_only, sort_by, sort_order, page, page_size } = filters;
 
   useEffect(() => {
-    if (isAdvancedSearch) return; // Managed by useSearchUrlSync
+    // Skip URL sync if no filters are active
+    const isEmptyFilters = !query && categories.length === 0 && languages.length === 0 && 
+                           tags.length === 0 && networks.length === 0 && !author && !verified_only;
+    if (isEmptyFilters) return;
 
     const params = new URLSearchParams();
     if (query) params.set('query', query);
@@ -199,17 +201,31 @@ export function ContractsContent() {
     router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
   }, [query, categories, languages, tags, networks, author, verified_only, sort_by, sort_order, page, page_size, pathname, router]);
 
+  // Build API parameters from filters  
+  const apiParams = {
+    keyword: query,
+    categories: categories.length > 0 ? categories : undefined,
+    languages: languages.length > 0 ? languages : undefined,
+    networks: networks.length > 0 ? (networks as Array<'mainnet'|'testnet'|'futurenet'>) : undefined,
+    author: author || undefined,
+    verified_only: verified_only || undefined,
+    sort_by: sort_by as any,
+    page,
+    page_size,
+  };
+
   const { data: allContracts, isLoading, isFetching } = useQuery<Awaited<ReturnType<typeof api.getContracts>>>({
     queryKey: ['contracts', apiParams],
     queryFn: () => api.getContracts(apiParams),
     placeholderData: (previousData) => previousData ?? EMPTY_CONTRACTS_RESPONSE,
   });
 
-  const data = useMemo(() => {
+  const effectiveData = useMemo(() => {
     const all = allContracts?.items ?? [];
 
     let filtered = all;
 
+    // Filter by query if present
     if (filters.query) {
       const q = filters.query.toLowerCase();
       filtered = filtered.filter(
@@ -281,10 +297,11 @@ export function ContractsContent() {
     queryFn: () => api.getStats(),
   });
 
-  const isEmptyResult = (effectiveData?.total ?? 0) === 0;
+  // Used to determine if results are empty for UI
   const paginationRange = useMemo(
     () => (effectiveData ? getPaginationRange(filters.page, effectiveData.total_pages) : []),
-    [filters.page, effectiveData],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filters.page],
   );
 
   useEffect(() => {
@@ -423,7 +440,7 @@ export function ContractsContent() {
     }
 
     return chips;
-  }, [filters.query, filters]);
+  }, [filters]);
 
   const filterPanel = (
     <FilterPanel
@@ -445,7 +462,7 @@ export function ContractsContent() {
           page: 1,
         }))
       }
-      networks={ALL_NETWORK_FILTERS}
+      networks={Array.from(ALL_NETWORK_FILTERS)}
       selectedNetworks={filters.networks}
       onToggleNetwork={(value) =>
         setFilters((current) => ({
@@ -485,28 +502,8 @@ export function ContractsContent() {
               Search, filter, and find the perfect building blocks for your project.
             </p>
 
-            {/* Search mode toggle */}
-            <div className="flex items-center justify-center gap-4 mb-8">
-              <button 
-                onClick={() => {
-                  setIsAdvancedSearch(false);
-                  clearUrl();
-                }}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${!isAdvancedSearch ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                Basic Search
-              </button>
-              <button 
-                onClick={() => setIsAdvancedSearch(true)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${isAdvancedSearch ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                Advanced Builder
-              </button>
-            </div>
-
             {/* Inline search */}
             <div className="max-w-2xl mx-auto mb-10">
-              {!isAdvancedSearch ? (
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <input
@@ -545,16 +542,6 @@ export function ContractsContent() {
                     <kbd className="px-2 py-1 rounded bg-muted text-muted-foreground text-xs font-mono border border-border">/</kbd>
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-6 text-left">
-                  <QueryBuilder 
-                    initialQuery={undefined}
-                    onChange={() => {}}
-                    onSearch={() => {}}
-                    onSave={() => {}}
-                  />
-                </div>
-              )}
             </div>
 
             {/* Stats row */}
@@ -637,52 +624,35 @@ export function ContractsContent() {
             <div className="gradient-border-card p-5 sticky top-20">
               <div className="flex items-center gap-2 mb-5">
                 <Filter className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-semibold text-foreground">{isAdvancedSearch ? 'Search Context' : 'Filters'}</h3>
+                <h3 className="text-sm font-semibold text-foreground">Filters</h3>
               </div>
               
-              {!isAdvancedSearch ? (
-                <>
-                  {filterPanel}
-                  <div className="mt-5 pt-4 border-t border-border">
-                    <div className="w-full">
-                      <TagAutocomplete
-                        onSelect={(tag) =>
-                          setFilters((current) => {
-                            if (current.tags.includes(tag.name)) return current;
-                            return {
-                              ...current,
-                              tags: [...current.tags, tag.name],
-                              page: 1,
-                            };
-                          })
-                        }
-                        placeholder="Filter by tag..."
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-6">
-                  <FavoriteSearches 
-                    onLoad={(q) => {
-                      setAdvancedQuery(q);
-                      syncToUrl(q);
-                    }}
-                  />
-                  <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
-                    <p className="text-xs text-muted-foreground font-medium mb-2">PRO TIP</p>
-                    <p className="text-xs leading-relaxed text-foreground">
-                      Use the builder to create complex logic like <span className="text-primary font-bold">Category = DeFi AND (Network = mainnet OR Verified = true)</span>.
-                    </p>
+              <>
+                {filterPanel}
+                <div className="mt-5 pt-4 border-t border-border">
+                  <div className="w-full">
+                    <TagAutocomplete
+                      onSelect={(tag) =>
+                        setFilters((current) => {
+                          if (current.tags.includes(tag.name)) return current;
+                          return {
+                            ...current,
+                            tags: [...current.tags, tag.name],
+                            page: 1,
+                          };
+                        })
+                      }
+                      placeholder="Filter by tag..."
+                    />
                   </div>
                 </div>
-              )}
+              </>
             </div>
           </aside>
 
           {/* Results grid */}
           <div className="flex-1 min-w-0">
-            {!preferencesReady || isLoading ? (
+            {isLoading ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <ContractCardSkeleton key={i} />
