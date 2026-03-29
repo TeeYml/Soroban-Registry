@@ -81,10 +81,7 @@ pub async fn list_contracts(
 ) -> Result<()> {
     // Build query parameters - ensure limit is reasonable
     let limit = limit.min(100); // API probably has a max limit
-    let mut params = vec![
-        format!("limit={}", limit),
-        format!("offset={}", offset),
-    ];
+    let mut params = vec![format!("limit={}", limit), format!("offset={}", offset)];
 
     if let Some(net) = network {
         params.push(format!("network={}", net));
@@ -117,11 +114,7 @@ pub async fn list_contracts(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "API request failed with status {}: {}",
-            status,
-            body
-        );
+        anyhow::bail!("API request failed with status {}: {}", status, body);
     }
 
     let response_body: serde_json::Value = response
@@ -140,44 +133,54 @@ pub async fn list_contracts(
     let mut contracts = contracts_array
         .iter()
         .filter_map(|item| {
-            let id = item.get("id").or_else(|| item.get("contract_id"))
+            let id = item
+                .get("id")
+                .or_else(|| item.get("contract_id"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            
-            let name = item.get("name")
+
+            let name = item
+                .get("name")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            
-            let contract_id = item.get("contract_id")
+
+            let contract_id = item
+                .get("contract_id")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            
-            let network = item.get("network")
+
+            let network = item
+                .get("network")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
                 .to_string();
-            
-            let category = item.get("category")
+
+            let category = item
+                .get("category")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            
-            let is_verified = item.get("is_verified")
+
+            let is_verified = item
+                .get("is_verified")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            
-            let health_score = item.get("health_score")
+
+            let health_score = item
+                .get("health_score")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
-            
-            let created_at = item.get("created_at")
+
+            let created_at = item
+                .get("created_at")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            
-            let tags = item.get("tags")
+
+            let tags = item
+                .get("tags")
                 .and_then(|v| v.as_array())
                 .map(|arr| {
                     arr.iter()
@@ -277,11 +280,7 @@ fn print_table(contracts: &[ContractListItem]) {
             contract.id.clone()
         };
 
-        let category = contract
-            .category
-            .as_deref()
-            .unwrap_or("—")
-            .to_string();
+        let category = contract.category.as_deref().unwrap_or("—").to_string();
 
         println!(
             "{:<36} {:<30} {:<15} {:<10} {:<15} {:<12}",
@@ -313,9 +312,7 @@ fn print_json(contracts: &[ContractListItem]) {
 
 fn print_csv(contracts: &[ContractListItem]) {
     // Header
-    println!(
-        "id,name,contract_id,network,category,is_verified,health_score,created_at,tags"
-    );
+    println!("id,name,contract_id,network,category,is_verified,health_score,created_at,tags");
 
     // Rows
     for contract in contracts {

@@ -16,6 +16,11 @@ interface FilterPanelProps {
   onAuthorChange: (value: string) => void;
   verifiedOnly: boolean;
   onVerifiedChange: (value: boolean) => void;
+  dateFrom?: string;
+  dateTo?: string;
+  onDateRangeChange?: (from: string, to: string) => void;
+  activeCounts?: Record<string, number>;
+  onClearAll?: () => void;
 }
 
 function CheckboxGroup({
@@ -78,6 +83,11 @@ export function FilterPanel({
   onAuthorChange,
   verifiedOnly,
   onVerifiedChange,
+  dateFrom,
+  dateTo,
+  onDateRangeChange,
+  activeCounts = {},
+  onClearAll,
 }: FilterPanelProps) {
   return (
     <div className="space-y-5">

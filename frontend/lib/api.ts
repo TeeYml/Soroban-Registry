@@ -239,6 +239,8 @@ export interface ContractSearchParams {
   page_size?: number;
   sort_by?: 'name' | 'created_at' | 'updated_at' | 'popularity' | 'deployments' | 'interactions' | 'relevance' | 'downloads';
   sort_order?: 'asc' | 'desc';
+  date_from?: string;
+  date_to?: string;
 }
 
 export interface SearchSuggestion {
@@ -539,6 +541,17 @@ export const api = {
 
           if (params?.verified_only) {
             filtered = filtered.filter((c) => c.is_verified);
+          }
+
+          if (params?.date_from) {
+            const fromTime = new Date(params.date_from).getTime();
+            filtered = filtered.filter((c) => new Date(c.created_at).getTime() >= fromTime);
+          }
+          if (params?.date_to) {
+            const toDate = new Date(params.date_to);
+            toDate.setUTCHours(23, 59, 59, 999);
+            const toTime = toDate.getTime();
+            filtered = filtered.filter((c) => new Date(c.created_at).getTime() <= toTime);
           }
 
           const sortBy = params?.sort_by || "created_at";

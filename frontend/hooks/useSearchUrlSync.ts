@@ -14,7 +14,7 @@ export function useSearchUrlSync(
 
   // Load from URL on mount
   useEffect(() => {
-    const adv = searchParams.get('adv');
+    const adv = searchParams?.get('adv');
     if (adv) {
       try {
         const decoded = JSON.parse(atob(adv));
@@ -27,7 +27,7 @@ export function useSearchUrlSync(
 
   // Sync to URL
   const syncToUrl = useCallback((newQuery: QueryNode) => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
     const encoded = btoa(JSON.stringify(newQuery));
     params.set('adv', encoded);
     
@@ -42,7 +42,7 @@ export function useSearchUrlSync(
   }, [pathname, router, searchParams]);
 
   const clearUrl = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.delete('adv');
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, router, searchParams]);

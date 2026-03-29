@@ -3,9 +3,8 @@ use crate::openapi;
 use crate::{
     ab_test_handlers, auth, auth_handlers, batch_verify_handlers, breaking_changes,
     canary_handlers, category_handlers, compatibility_testing_handlers, contract_events,
-    contributor_handlers, custom_metrics_handlers, deprecation_handlers, handlers, metrics_handler,
-    migration_handlers, patch_handlers, performance_handlers, resource_handlers,
-    similarity_handlers, simulation_handlers, state::AppState, websocket,
+    custom_metrics_handlers, deprecation_handlers, handlers, metrics_handler, migration_handlers,
+    performance_handlers, resource_handlers, similarity_handlers, state::AppState, websocket,
 };
 
 use axum::{
@@ -75,6 +74,16 @@ pub fn contract_routes() -> Router<AppState> {
         .route(
             "/api/contracts/:id/versions",
             get(handlers::get_contract_versions).post(handlers::create_contract_version),
+        )
+        // Static segment "compare" must be registered before the dynamic ":version" route
+        // so Axum resolves it correctly.
+        .route(
+            "/api/contracts/:id/versions/compare",
+            get(handlers::compare_contract_versions),
+        )
+        .route(
+            "/api/contracts/:id/versions/:version",
+            get(handlers::get_specific_contract_version),
         )
         .route(
             "/api/contracts/:id/changelog",
@@ -237,6 +246,27 @@ pub fn contract_routes() -> Router<AppState> {
         .route(
             "/api/contracts/simulate-deploy",
             post(simulation_handlers::simulate_deploy),
+        )
+        // Review system endpoints
+        .route(
+            "/api/contracts/:id/reviews",
+            get(handlers::reviews::get_reviews).post(handlers::reviews::create_review),
+        )
+        .route(
+            "/api/contracts/:id/reviews/:review_id/vote",
+            post(handlers::reviews::vote_review),
+        )
+        .route(
+            "/api/contracts/:id/reviews/:review_id/flag",
+            post(handlers::reviews::flag_review),
+        )
+        .route(
+            "/api/contracts/:id/reviews/:review_id/moderate",
+            post(handlers::reviews::moderate_review),
+        )
+        .route(
+            "/api/contracts/:id/rating-stats",
+            get(handlers::reviews::get_rating_stats),
         )
         .merge(favorite_routes())
 }
@@ -494,6 +524,11 @@ pub fn admin_routes() -> Router<AppState> {
         .route(
             "/api/admin/categories/:id",
             put(category_handlers::update_category).delete(category_handlers::delete_category),
+        )
+        // Version revert (issue #486) – admin-only
+        .route(
+            "/api/admin/contracts/:id/versions/:version/revert",
+            post(handlers::revert_contract_version),
         )
         .route_layer(middleware::from_fn(auth::require_admin))
 }

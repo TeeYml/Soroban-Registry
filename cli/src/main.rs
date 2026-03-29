@@ -1,7 +1,9 @@
 #![allow(unused_variables)]
 
 mod backup;
+mod batch_register;
 mod batch_verify;
+mod cicd;
 mod commands;
 mod config;
 mod contract_verify;
@@ -29,7 +31,6 @@ mod table_format;
 mod test_framework;
 mod webhook;
 mod wizard;
-mod cicd;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -498,6 +499,25 @@ pub enum Commands {
         #[command(subcommand)]
         action: NetworkCommands,
     },
+
+    /// Register multiple contracts from a YAML or JSON manifest file
+    BatchRegister {
+        /// Path to the manifest file (.yaml, .yml, or .json)
+        #[arg(long)]
+        manifest: String,
+
+        /// Publisher Stellar address (overrides `publisher` field in the manifest)
+        #[arg(long)]
+        publisher: Option<String>,
+
+        /// Validate all entries and show what would be registered without submitting
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output results as machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Sub-commands for the `network` group
@@ -555,7 +575,6 @@ pub enum ReleaseNotesCommands {
         #[arg(long)]
         json: bool,
     },
-
 
     /// Edit draft release notes before publishing
     Edit {
@@ -1728,10 +1747,16 @@ async fn main() -> Result<()> {
         },
         // ── Contract verify command (#522) ───────────────────────────────────
         Commands::Contract { action } => match action {
-            ContractCommands::Verify { address, network, json } => {
+            ContractCommands::Verify {
+                address,
+                network,
+                json,
+            } => {
                 log::debug!(
                     "Command: contract verify | address={} network={} json={}",
-                    address, network, json
+                    address,
+                    network,
+                    json
                 );
                 contract_verify::run(&cli.api_url, &address, &network, json).await?;
             }
@@ -1830,8 +1855,20 @@ async fn main() -> Result<()> {
                 auto_register,
                 json,
             } => {
-                log::debug!("Command: cicd run | path={} network={}", contract_path, network);
-                cicd::run_pipeline(&cli.api_url, &contract_path, &network, skip_scan, auto_register, json).await?;
+                log::debug!(
+                    "Command: cicd run | path={} network={}",
+                    contract_path,
+                    network
+                );
+                cicd::run_pipeline(
+                    &cli.api_url,
+                    &contract_path,
+                    &network,
+                    skip_scan,
+                    auto_register,
+                    json,
+                )
+                .await?;
             }
             CicdCommands::Validate { contract_path } => {
                 log::debug!("Command: cicd validate | path={}", contract_path);
@@ -1846,6 +1883,29 @@ async fn main() -> Result<()> {
                 network::status(json).await?;
             }
         },
+
+        // ── Bulk contract registration (issue #525) ──────────────────────────
+        Commands::BatchRegister {
+            manifest,
+            publisher,
+            dry_run,
+            json,
+        } => {
+            log::debug!(
+                "Command: batch-register | manifest={} dry_run={} publisher={:?}",
+                manifest,
+                dry_run,
+                publisher
+            );
+            batch_register::run_batch_register(
+                &cli.api_url,
+                &manifest,
+                publisher.as_deref(),
+                dry_run,
+                json,
+            )
+            .await?;
+        }
     }
 
     Ok(())

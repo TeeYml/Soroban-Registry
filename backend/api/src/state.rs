@@ -1,9 +1,9 @@
 use crate::auth::AuthManager;
 use crate::cache::{CacheConfig, CacheLayer};
-use crate::contract_events::ContractEventHub;
 use crate::health_monitor::HealthMonitorStatus;
 use crate::resource_tracking::ResourceManager;
 use prometheus::Registry;
+use shared::error::RegistryError;
 use sqlx::PgPool;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
@@ -47,6 +47,7 @@ pub struct AppState {
     pub auth_mgr: Arc<RwLock<AuthManager>>,
     pub resource_mgr: Arc<RwLock<ResourceManager>>,
     pub event_broadcaster: broadcast::Sender<RealtimeEvent>,
+    pub contract_events: Arc<ContractEventHub>,
 }
 
 impl AppState {
@@ -55,14 +56,14 @@ impl AppState {
         registry: Registry,
         job_engine: Arc<soroban_batch::engine::JobEngine>,
         is_shutting_down: Arc<AtomicBool>,
-    ) -> Result<Self, crate::shared::error::RegistryError> {
+    ) -> Result<Self, shared::error::RegistryError> {
         let config = CacheConfig::from_env();
         let auth_mgr = Arc::new(RwLock::new(
             AuthManager::from_env().expect("JWT config validated at startup"),
         ));
         let resource_mgr = Arc::new(RwLock::new(ResourceManager::new()));
         let (event_broadcaster, _) = broadcast::channel(100);
-        Self {
+        Ok(Self {
             db,
             started_at: Instant::now(),
             cache: Arc::new(CacheLayer::new(config).await),
@@ -73,6 +74,6 @@ impl AppState {
             auth_mgr,
             resource_mgr,
             event_broadcaster,
-        }
+        })
     }
 }

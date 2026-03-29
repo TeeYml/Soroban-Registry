@@ -2134,7 +2134,10 @@ pub async fn info(
         .await?;
 
     if !metadata_res.status().is_success() {
-        anyhow::bail!("Failed to fetch contract metadata: {}", metadata_res.status());
+        anyhow::bail!(
+            "Failed to fetch contract metadata: {}",
+            metadata_res.status()
+        );
     }
     let metadata: serde_json::Value = metadata_res.json().await?;
 
@@ -2142,16 +2145,17 @@ pub async fn info(
     let contract_uuid = metadata["contract"]["id"]
         .as_str()
         .context("Metadata missing contract ID")?;
-    let contract_address = metadata["contract"]["contract_id"]
-        .as_str()
-        .unwrap_or(id);
+    let contract_address = metadata["contract"]["contract_id"].as_str().unwrap_or(id);
 
     // 2. Fetch ABI
     let abi_url = format!("{}/api/contracts/{}/abi", base_url, contract_uuid);
     let abi_res = client.get(&abi_url).send().await;
     let abi: Option<serde_json::Value> = if let Ok(res) = abi_res {
         if res.status().is_success() {
-            res.json::<serde_json::Value>().await.ok().and_then(|v| v.get("abi").cloned())
+            res.json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| v.get("abi").cloned())
         } else {
             None
         }
@@ -2177,7 +2181,9 @@ pub async fn info(
     let deps_res = client.get(&deps_url).send().await;
     let dependencies: Vec<serde_json::Value> = if let Ok(res) = deps_res {
         if res.status().is_success() {
-            res.json::<serde_json::Value>().await.ok()
+            res.json::<serde_json::Value>()
+                .await
+                .ok()
                 .and_then(|v| v.get("dependencies").cloned())
                 .and_then(|v| v.as_array().cloned())
                 .unwrap_or_default()
@@ -2193,7 +2199,9 @@ pub async fn info(
     let relate_res = client.get(&relate_url).send().await;
     let dependents: Vec<serde_json::Value> = if let Ok(res) = relate_res {
         if res.status().is_success() {
-            res.json::<serde_json::Value>().await.ok()
+            res.json::<serde_json::Value>()
+                .await
+                .ok()
                 .and_then(|v| v.get("dependents").cloned())
                 .and_then(|v| v.as_array().cloned())
                 .unwrap_or_default()
@@ -2242,7 +2250,7 @@ pub async fn info(
                 &full_info,
                 highlight_method,
                 contract_address,
-                &network.to_string()
+                &network.to_string(),
             )?;
         }
     }
@@ -2258,14 +2266,24 @@ fn render_info_text(
 ) -> Result<()> {
     let metadata = &info["metadata"];
     let name = metadata["name"].as_str().unwrap_or("Unknown");
-    let desc = metadata["description"].as_str().unwrap_or("No description provided.");
+    let desc = metadata["description"]
+        .as_str()
+        .unwrap_or("No description provided.");
     let is_verified = metadata["is_verified"].as_bool().unwrap_or(false);
     let health_score = metadata["health_score"].as_i64().unwrap_or(0);
 
     println!("\n{}", "=".repeat(80).cyan());
     println!("{} {}", "CONTRACT:".bold(), name.bold().green());
     println!("{} {}", "ID:      ".bold(), contract_address.yellow());
-    println!("{} {}", "STATUS:  ".bold(), if is_verified { "Verified".green().bold() } else { "Unverified".red() });
+    println!(
+        "{} {}",
+        "STATUS:  ".bold(),
+        if is_verified {
+            "Verified".green().bold()
+        } else {
+            "Unverified".red()
+        }
+    );
     println!("{} {}/100", "HEALTH:  ".bold(), health_score);
     println!("{} {}", "DESC:    ".bold(), desc);
     println!("{}", "=".repeat(80).cyan());
@@ -2273,9 +2291,18 @@ fn render_info_text(
     // Explorer Links
     println!("\n{}", "BLOCK EXPLORERS:".bold().underline());
     let explorer_url = match network_str {
-        "testnet" => format!("https://stellar.expert/explorer/testnet/contract/{}", contract_address),
-        "futurenet" => format!("https://stellar.expert/explorer/futurenet/contract/{}", contract_address),
-        _ => format!("https://stellar.expert/explorer/public/contract/{}", contract_address),
+        "testnet" => format!(
+            "https://stellar.expert/explorer/testnet/contract/{}",
+            contract_address
+        ),
+        "futurenet" => format!(
+            "https://stellar.expert/explorer/futurenet/contract/{}",
+            contract_address
+        ),
+        _ => format!(
+            "https://stellar.expert/explorer/public/contract/{}",
+            contract_address
+        ),
     };
     println!("  • StellarExpert: {}", explorer_url.blue().underline());
 
@@ -2327,8 +2354,8 @@ fn render_info_text(
             println!("\n{}", "RELATED CONTRACTS (DEPENDENTS):".bold().underline());
             for d in deps {
                 let d_name = d["dependency_name"].as_str().unwrap_or("unknown"); // This is from the perspective of the dependent
-                // Wait, it should use the contract name if available.
-                // But dependents might just be a list of contract IDs.
+                                                                                 // Wait, it should use the contract name if available.
+                                                                                 // But dependents might just be a list of contract IDs.
                 println!("  • Contract ID: {}", d["contract_id"]);
             }
         }

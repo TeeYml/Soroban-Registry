@@ -6,7 +6,6 @@ use axum::{
 use chrono::{SecondsFormat, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
