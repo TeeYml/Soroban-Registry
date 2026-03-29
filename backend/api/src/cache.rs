@@ -125,7 +125,6 @@ impl CacheLayer {
             contract_access_cache,
             redis_cm,
             config,
-            redis_cm,
         }
     }
 
