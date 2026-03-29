@@ -13,6 +13,23 @@ export default function CompatibilityPage() {
     const idParam = params.id;
     const contractId = Array.isArray(idParam) ? idParam[0] : idParam;
 
+    const { data: contract } = useQuery({
+        queryKey: ['contract', contractId],
+        queryFn: () => api.getContract(contractId!),
+        enabled: !!contractId,
+    });
+
+    const {
+        data: compatibility,
+        isLoading,
+        isError,
+        error,
+    } = useQuery({
+        queryKey: ['compatibility', contractId],
+        queryFn: () => api.getCompatibility(contractId!),
+        enabled: !!contractId,
+    });
+
     if (!contractId) {
         return (
             <div className="min-h-screen bg-background text-foreground">
@@ -34,22 +51,6 @@ export default function CompatibilityPage() {
             </div>
         );
     }
-
-    const { data: contract } = useQuery({
-        queryKey: ['contract', contractId],
-        queryFn: () => api.getContract(contractId),
-    });
-
-    const {
-        data: compatibility,
-        isLoading,
-        isError,
-        error,
-    } = useQuery({
-        queryKey: ['compatibility', contractId],
-        queryFn: () => api.getCompatibility(contractId),
-        enabled: !!contractId,
-    });
 
     return (
         <div className="min-h-screen bg-background text-foreground">

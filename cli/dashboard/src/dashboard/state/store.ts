@@ -1,5 +1,13 @@
 import { EventEmitter } from "node:events";
-import type { ActivityBucket, ConnectionState, DashboardFilters, DashboardState, Deployment, Interaction } from "../types";
+import type {
+  ActivityBucket,
+  ConnectionState,
+  DashboardFilters,
+  DashboardState,
+  Deployment,
+  Interaction,
+  LoadingState,
+} from "../types";
 
 export type StoreChange = {
   state: DashboardState;
@@ -14,14 +22,22 @@ export class DashboardStore {
   private state: DashboardState;
 
   constructor(params: { wsUrl: string; filters: DashboardFilters }) {
-    const connection: ConnectionState = { status: "disconnected", wsUrl: params.wsUrl };
+    const connection: ConnectionState = {
+      status: "disconnected",
+      wsUrl: params.wsUrl,
+    };
     this.state = {
       connection,
       filters: params.filters,
       deployments: [],
       interactions: [],
       activity: [],
-      nowTs: Date.now()
+      nowTs: Date.now(),
+      loading: {
+        deployments: true,
+        trending: true,
+        activity: true,
+      },
     };
   }
 
@@ -50,21 +66,46 @@ export class DashboardStore {
     this.emit("tick");
   }
 
+  setLoading(loading: Partial<LoadingState>, reason: string): void {
+    this.state = {
+      ...this.state,
+      loading: { ...this.state.loading, ...loading },
+    };
+    this.emit(reason);
+  }
+
   addDeployment(dep: Deployment): void {
-    const deployments = [dep, ...this.state.deployments].slice(0, MAX_DEPLOYMENTS);
-    this.state = { ...this.state, deployments };
+    const deployments = [dep, ...this.state.deployments].slice(
+      0,
+      MAX_DEPLOYMENTS,
+    );
+    this.state = {
+      ...this.state,
+      deployments,
+      loading: { ...this.state.loading, deployments: false },
+    };
     this.bumpActivity(dep.ts, { deployments: 1, interactions: 0 });
     this.emit("deployment_created");
   }
 
   addInteraction(intx: Interaction): void {
-    const interactions = [intx, ...this.state.interactions].slice(0, MAX_INTERACTIONS);
-    this.state = { ...this.state, interactions };
+    const interactions = [intx, ...this.state.interactions].slice(
+      0,
+      MAX_INTERACTIONS,
+    );
+    this.state = {
+      ...this.state,
+      interactions,
+      loading: { ...this.state.loading, trending: false },
+    };
     this.bumpActivity(intx.ts, { deployments: 0, interactions: 1 });
     this.emit("contract_interaction");
   }
 
-  private bumpActivity(ts: number, delta: { deployments: number; interactions: number }): void {
+  private bumpActivity(
+    ts: number,
+    delta: { deployments: number; interactions: number },
+  ): void {
     const bucketMs = 60_000;
     const startTs = Math.floor(ts / bucketMs) * bucketMs;
 
@@ -78,18 +119,24 @@ export class DashboardStore {
     const updated: ActivityBucket = {
       ...activity[idx],
       deployments: activity[idx].deployments + delta.deployments,
-      interactions: activity[idx].interactions + delta.interactions
+      interactions: activity[idx].interactions + delta.interactions,
     };
 
     activity[idx] = updated;
 
     const maxBuckets = 120;
     const trimmed = activity.slice(Math.max(0, activity.length - maxBuckets));
-    this.state = { ...this.state, activity: trimmed };
+    this.state = {
+      ...this.state,
+      activity: trimmed,
+      loading: { ...this.state.loading, activity: false },
+    };
   }
 
   private emit(reason: string): void {
-    this.emitter.emit("change", { state: this.state, reason } satisfies StoreChange);
+    this.emitter.emit("change", {
+      state: this.state,
+      reason,
+    } satisfies StoreChange);
   }
 }
-

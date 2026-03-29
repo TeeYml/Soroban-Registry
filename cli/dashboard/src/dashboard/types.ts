@@ -33,7 +33,10 @@ export type NetworkStatusEvent = {
   };
 };
 
-export type RegistryEvent = DeploymentCreatedEvent | ContractInteractionEvent | NetworkStatusEvent;
+export type RegistryEvent =
+  | DeploymentCreatedEvent
+  | ContractInteractionEvent
+  | NetworkStatusEvent;
 
 export type ConnectionState =
   | {
@@ -85,6 +88,12 @@ export type ActivityBucket = {
   interactions: number;
 };
 
+export type LoadingState = {
+  deployments: boolean;
+  trending: boolean;
+  activity: boolean;
+};
+
 export type DashboardState = {
   connection: ConnectionState;
   filters: DashboardFilters;
@@ -92,5 +101,5 @@ export type DashboardState = {
   interactions: Interaction[];
   activity: ActivityBucket[];
   nowTs: number;
+  loading: LoadingState;
 };
-

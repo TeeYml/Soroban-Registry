@@ -16,6 +16,12 @@ function PublisherProfileContent() {
   const addressParam = params.address;
   const address = Array.isArray(addressParam) ? addressParam[0] : addressParam;
 
+  const { data: publisher, isLoading, error } = useQuery({
+    queryKey: ["publisher", address],
+    queryFn: () => getPublisher(address!),
+    enabled: !!address,
+  });
+
   if (!address) {
     return (
       <div className="min-h-screen bg-background text-foreground">
@@ -29,11 +35,6 @@ function PublisherProfileContent() {
       </div>
     );
   }
-
-  const { data: publisher, isLoading, error } = useQuery({
-    queryKey: ["publisher", address],
-    queryFn: () => getPublisher(address),
-  });
 
   if (isLoading) {
     return (

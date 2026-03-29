@@ -4,10 +4,10 @@
 //! that need validation when received from clients.
 
 use shared::models::{
-    ChangePublisherRequest, CreateContractVersionRequest, CreateInteractionBatchRequest,
-    CreateInteractionRequest, CreateMigrationRequest, DependencyDeclaration, PublishRequest,
-    Publisher, UpdateContractMetadataRequest, UpdateContractStatusRequest,
-    UpdateMigrationStatusRequest, VerifyRequest,
+    ChangePublisherRequest, ContractExportRequest, CreateContractVersionRequest,
+    CreateInteractionBatchRequest, CreateInteractionRequest, CreateMigrationRequest,
+    DependencyDeclaration, PublishRequest, Publisher, UpdateContractMetadataRequest,
+    UpdateContractStatusRequest, UpdateMigrationStatusRequest, VerifyRequest,
 };
 
 use super::extractors::{FieldError, Validatable, ValidationBuilder};
@@ -177,6 +177,78 @@ impl Validatable for VerifyRequest {
         builder.check("build_params", || {
             validate_json_depth(&self.build_params, MAX_JSON_DEPTH)
         });
+
+        builder.build()
+    }
+}
+
+impl Validatable for ContractExportRequest {
+    fn sanitize(&mut self) {
+        if let Some(ref mut query) = self.filters.query {
+            *query = trim(query);
+            if query.is_empty() {
+                self.filters.query = None;
+            }
+        }
+
+        if let Some(ref mut category) = self.filters.category {
+            *category = trim(category);
+            if category.is_empty() {
+                self.filters.category = None;
+            }
+        }
+
+        if let Some(ref mut categories) = self.filters.categories {
+            *categories = categories
+                .iter()
+                .map(|value| trim(value))
+                .filter(|value| !value.is_empty())
+                .collect();
+            if categories.is_empty() {
+                self.filters.categories = None;
+            }
+        }
+
+        if let Some(ref mut tags) = self.filters.tags {
+            *tags = sanitize_tags(tags);
+            if tags.is_empty() {
+                self.filters.tags = None;
+            }
+        }
+    }
+
+    fn validate(&self) -> Result<(), Vec<FieldError>> {
+        let mut builder = ValidationBuilder::new();
+
+        if let Some(ref query) = self.filters.query {
+            builder.check("filters.query", || validate_length(query, 1, 255));
+            builder.check("filters.query", || validate_no_xss(query));
+        }
+
+        if let Some(ref category) = self.filters.category {
+            builder.check("filters.category", || validate_length(category, 1, 100));
+            builder.check("filters.category", || validate_no_xss(category));
+        }
+
+        if let Some(ref categories) = self.filters.categories {
+            builder.check("filters.categories", || {
+                if categories.len() > 20 {
+                    return Err("at most 20 categories are allowed".to_string());
+                }
+                Ok(())
+            });
+            for (index, category) in categories.iter().enumerate() {
+                builder.check(format!("filters.categories[{index}]"), || {
+                    validate_length(category, 1, 100)
+                });
+            }
+        }
+
+        if let Some(ref tags) = self.filters.tags {
+            builder.check("filters.tags", || {
+                validate_tags(tags, MAX_TAGS_COUNT, MAX_TAG_LENGTH)
+            });
+        }
 
         builder.build()
     }

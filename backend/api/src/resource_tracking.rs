@@ -351,11 +351,20 @@ mod tests {
             );
         }
         let summary = mgr.summary("cp90").unwrap();
-        let mean_ts = summary.forecast.cpu_exhaustion_ts.expect("mean exhaustion present");
-        let p90_ts = summary.forecast.cpu_exhaustion_ts_p90.expect("p90 exhaustion present");
+        let mean_ts = summary
+            .forecast
+            .cpu_exhaustion_ts
+            .expect("mean exhaustion present");
+        let p90_ts = summary
+            .forecast
+            .cpu_exhaustion_ts_p90
+            .expect("p90 exhaustion present");
 
         // p90 uses a lower burn rate, so it must not be earlier than the point estimate
-        assert!(mean_ts <= p90_ts, "p90 ({p90_ts}) must not precede mean ({mean_ts})");
+        assert!(
+            mean_ts <= p90_ts,
+            "p90 ({p90_ts}) must not precede mean ({mean_ts})"
+        );
 
         // forecast accuracy margin: for a near-linear 72-sample signal the p90
         // bound should fall within 10× of the mean forecast horizon
@@ -374,8 +383,14 @@ mod tests {
         );
 
         // mem p90 bound should also be present and ordered
-        let mem_mean = summary.forecast.mem_exhaustion_ts.expect("mem mean present");
-        let mem_p90 = summary.forecast.mem_exhaustion_ts_p90.expect("mem p90 present");
+        let mem_mean = summary
+            .forecast
+            .mem_exhaustion_ts
+            .expect("mem mean present");
+        let mem_p90 = summary
+            .forecast
+            .mem_exhaustion_ts_p90
+            .expect("mem p90 present");
         assert!(mem_mean <= mem_p90, "mem p90 must not precede mem mean");
     }
 
@@ -566,14 +581,20 @@ mod tests {
     fn deltas_of_constant_series_are_zero() {
         let data = vec![7.0_f64; 5];
         let d = deltas(&data);
-        assert!(d.iter().all(|&v| v == 0.0), "deltas of flat series must all be 0");
+        assert!(
+            d.iter().all(|&v| v == 0.0),
+            "deltas of flat series must all be 0"
+        );
     }
 
     #[test]
     fn deltas_of_monotone_series_are_positive() {
         let data = vec![1.0, 3.0, 6.0, 10.0, 15.0];
         let d = deltas(&data);
-        assert!(d.iter().all(|&v| v > 0.0), "deltas of strictly increasing series must be > 0");
+        assert!(
+            d.iter().all(|&v| v > 0.0),
+            "deltas of strictly increasing series must be > 0"
+        );
     }
 
     #[test]

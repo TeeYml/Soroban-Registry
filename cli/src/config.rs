@@ -277,10 +277,7 @@ timeout = 55
     #[test]
     fn test_config_file_path_for_base() {
         let dir = tempdir().unwrap();
-        let expected = dir
-            .path()
-            .join(CONFIG_DIR_NAME)
-            .join(CONFIG_FILE_NAME);
+        let expected = dir.path().join(CONFIG_DIR_NAME).join(CONFIG_FILE_NAME);
         assert_eq!(config_file_path_for(dir.path()), expected);
     }
 

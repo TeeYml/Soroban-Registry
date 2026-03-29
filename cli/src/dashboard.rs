@@ -37,7 +37,10 @@ pub async fn run_dashboard(params: DashboardParams) -> Result<()> {
     cmd.stdout(std::process::Stdio::inherit());
     cmd.stderr(std::process::Stdio::inherit());
 
-    let status = cmd.status().await.context("Failed to execute Node dashboard process")?;
+    let status = cmd
+        .status()
+        .await
+        .context("Failed to execute Node dashboard process")?;
     if !status.success() {
         return Err(anyhow!("Dashboard exited with status: {status}"));
     }
@@ -70,4 +73,3 @@ fn dashboard_entrypoint() -> Result<PathBuf> {
         "Dashboard entrypoint not found. Build it first: cd cli/dashboard && npm install && npm run build"
     ))
 }
-

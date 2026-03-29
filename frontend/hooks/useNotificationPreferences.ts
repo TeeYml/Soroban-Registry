@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { NotificationPreferences } from '@/types/realtime';
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -13,24 +13,20 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
 
 const STORAGE_KEY = 'notification-preferences';
 
-export function useNotificationPreferences() {
-  const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_PREFERENCES);
-  const [isLoaded, setIsLoaded] = useState(false);
+function loadPreferencesFromStorage(): NotificationPreferences {
+  if (typeof window === 'undefined') return DEFAULT_PREFERENCES;
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) return DEFAULT_PREFERENCES;
+  try {
+    return JSON.parse(stored) as NotificationPreferences;
+  } catch {
+    return DEFAULT_PREFERENCES;
+  }
+}
 
-  useEffect(() => {
-    // Load from localStorage on mount
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        try {
-          setPreferences(JSON.parse(stored));
-        } catch (error) {
-          console.error('Failed to parse notification preferences:', error);
-        }
-      }
-      setIsLoaded(true);
-    }
-  }, []);
+export function useNotificationPreferences() {
+  const [preferences, setPreferences] = useState<NotificationPreferences>(loadPreferencesFromStorage);
+  const isLoaded = true;
 
   const updatePreferences = useCallback((updates: Partial<NotificationPreferences>) => {
     setPreferences(prev => {

@@ -10,7 +10,6 @@ use axum::{
     response::Response,
 };
 use std::net::SocketAddr;
-use uuid::Uuid;
 
 use crate::security_log;
 
@@ -30,12 +29,7 @@ pub async fn validation_failure_tracking_middleware(
     req: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    let correlation_id = req
-        .headers()
-        .get("x-correlation-id")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let correlation_id = crate::request_tracing::get_or_create_request_id(&req);
 
     let response = next.run(req).await;
 
@@ -63,11 +57,9 @@ pub async fn validation_failure_tracking_middleware(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_correlation_id_generation() {
-        let id = Uuid::new_v4().to_string();
+        let id = crate::request_tracing::generate_request_id();
         assert!(!id.is_empty());
         assert_eq!(id.len(), 36); // UUID v4 format
     }

@@ -27,6 +27,7 @@ pub struct EventStats {
     pub events_by_topic: serde_json::Value,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn query_events(
     api_url: &str,
     contract_id: &str,

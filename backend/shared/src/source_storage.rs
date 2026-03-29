@@ -1,11 +1,16 @@
 use crate::error::RegistryError;
-use crate::models::SourceFormat;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs;
 use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub enum SourceFormat {
+    Rust,
+    Wasm,
+}
 
 /// Supported source storage backends
 #[derive(Debug, Clone)]
@@ -37,7 +42,11 @@ pub struct SourceStorageConfig {
 
 impl SourceStorageConfig {
     pub fn from_env() -> Result<Self, RegistryError> {
-        let backend = match env::var("SOURCE_STORAGE_BACKEND").unwrap_or_else(|_| "local".to_string()).to_lowercase().as_str() {
+        let backend = match env::var("SOURCE_STORAGE_BACKEND")
+            .unwrap_or_else(|_| "local".to_string())
+            .to_lowercase()
+            .as_str()
+        {
             "s3" => StorageBackend::S3,
             "gcs" => StorageBackend::Gcs,
             _ => StorageBackend::Local,
@@ -79,24 +88,34 @@ impl SourceStorage {
     pub async fn new() -> Result<Self, RegistryError> {
         let config = SourceStorageConfig::from_env()?;
 
-        let s3_bucket_client = if matches!(config.backend, StorageBackend::S3 | StorageBackend::Gcs) {
+        let s3_bucket_client = if matches!(config.backend, StorageBackend::S3 | StorageBackend::Gcs)
+        {
             let region = config
                 .s3_region
                 .as_deref()
                 .unwrap_or("us-east-1")
                 .to_string();
-            let bucket = config
-                .s3_bucket
-                .clone()
-                .ok_or_else(|| RegistryError::InvalidInput("SOURCE_STORAGE_BUCKET is required".to_string()))?;
+            let bucket = config.s3_bucket.clone().ok_or_else(|| {
+                RegistryError::InvalidInput("SOURCE_STORAGE_BUCKET is required".to_string())
+            })?;
 
-            let endpoint = config.s3_endpoint.clone();
-            let bucket = if let Some(ep) = endpoint {
-                s3::bucket::Bucket::new_with_path_style(&bucket, &region, &ep)?
+            let credentials = s3::creds::Credentials::default()
+                .map_err(|e| RegistryError::Internal(format!("S3 credentials error: {}", e)))?;
+            let s3_region = if let Some(ep) = config.s3_endpoint.clone() {
+                s3::Region::Custom {
+                    region: region.clone(),
+                    endpoint: ep,
+                }
             } else {
-                s3::bucket::Bucket::new(&bucket, &region)?
+                s3::Region::Custom {
+                    region: region.clone(),
+                    endpoint: format!("https://s3.{}.amazonaws.com", region),
+                }
             };
-            Some(bucket)
+            let b = s3::Bucket::new(&bucket, s3_region, credentials)
+                .map_err(|e| RegistryError::Internal(format!("S3 bucket init error: {}", e)))?
+                .with_path_style();
+            Some(*b)
         } else {
             None
         };
@@ -116,9 +135,16 @@ impl SourceStorage {
         source_bytes: &[u8],
     ) -> Result<(String, String, String), RegistryError> {
         let source_hash = compute_sha256(source_bytes);
-        let source_size = source_bytes.len() as i64;
+        let _source_size = source_bytes.len() as i64;
 
-        let key = format!("{}/{}/{}/{}.{}", contract_id, version, format.to_string(), Uuid::new_v4(), "bin");
+        let key = format!(
+            "{}/{}/{}/{}.{}",
+            contract_id,
+            version,
+            format,
+            Uuid::new_v4(),
+            "bin"
+        );
 
         match self.config.backend {
             StorageBackend::Local => {
@@ -131,16 +157,13 @@ impl SourceStorage {
                 fs::create_dir_all(&path).await?;
                 let file_path = path.join(format!("{}.bin", Uuid::new_v4()));
                 fs::write(&file_path, source_bytes).await?;
-                let key = file_path
-                    .to_string_lossy()
-                    .into_owned();
+                let key = file_path.to_string_lossy().into_owned();
                 Ok(("local".to_string(), key, source_hash))
             }
             StorageBackend::S3 | StorageBackend::Gcs => {
-                let bucket = self
-                    .s3_bucket_client
-                    .as_ref()
-                    .ok_or_else(|| RegistryError::Internal("S3 client not initialized".to_string()))?;
+                let bucket = self.s3_bucket_client.as_ref().ok_or_else(|| {
+                    RegistryError::Internal("S3 client not initialized".to_string())
+                })?;
 
                 let prefix = self
                     .config
@@ -149,44 +172,53 @@ impl SourceStorage {
                     .unwrap_or_else(|| "contract_sources".to_string());
                 let object_key = format!("{}/{}", prefix.trim_end_matches('/'), key);
 
-                let result = bucket.put_object_blocking(&object_key, source_bytes);
-                if result.is_ok() {
-                    Ok((self.config.backend.to_string(), object_key, source_hash))
-                } else {
-                    Err(RegistryError::Internal(format!(
-                        "Failed to upload source artifact to S3/GCS: {:?}",
-                        result.err()
-                    )))
-                }
+                bucket
+                    .put_object(&object_key, source_bytes)
+                    .await
+                    .map_err(|e| {
+                        RegistryError::Internal(format!(
+                            "Failed to upload source artifact to S3/GCS: {}",
+                            e
+                        ))
+                    })?;
+                Ok((self.config.backend.to_string(), object_key, source_hash))
             }
         }
     }
 
-    pub async fn retrieve_source(&self, storage_backend: &str, storage_key: &str) -> Result<Vec<u8>, RegistryError> {
+    pub async fn retrieve_source(
+        &self,
+        storage_backend: &str,
+        storage_key: &str,
+    ) -> Result<Vec<u8>, RegistryError> {
         match storage_backend {
             "local" => {
                 let bytes = fs::read(storage_key).await?;
                 Ok(bytes)
             }
             "s3" | "gcs" => {
-                let bucket = self
-                    .s3_bucket_client
-                    .as_ref()
-                    .ok_or_else(|| RegistryError::Internal("S3/GCS bucket not initialized".to_string()))?;
+                let bucket = self.s3_bucket_client.as_ref().ok_or_else(|| {
+                    RegistryError::Internal("S3/GCS bucket not initialized".to_string())
+                })?;
 
-                let data = bucket.get_object_blocking(storage_key);
-                data.map_err(|e| RegistryError::Internal(format!("S3/GCS get_object failed: {}", e)))
+                let data = bucket.get_object(storage_key).await.map_err(|e| {
+                    RegistryError::Internal(format!("S3/GCS get_object failed: {}", e))
+                })?;
+                Ok(data.to_vec())
             }
-            other => Err(RegistryError::InvalidInput(format!("Unknown storage backend {}", other))),
+            other => Err(RegistryError::InvalidInput(format!(
+                "Unknown storage backend {}",
+                other
+            ))),
         }
     }
 }
 
-impl SourceFormat {
-    pub fn to_string(&self) -> String {
+impl fmt::Display for SourceFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SourceFormat::Rust => "rust".to_string(),
-            SourceFormat::Wasm => "wasm".to_string(),
+            SourceFormat::Rust => write!(f, "rust"),
+            SourceFormat::Wasm => write!(f, "wasm"),
         }
     }
 }

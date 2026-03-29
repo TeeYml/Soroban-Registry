@@ -85,6 +85,7 @@ pub async fn create_policy(
 // Create a new deployment proposal
 // ─────────────────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_proposal(
     api_url: &str,
     contract_name: &str,

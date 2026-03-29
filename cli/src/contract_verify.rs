@@ -1,0 +1,393 @@
+//! contract_verify.rs — `soroban-registry contract verify <address>` (#522)
+//!
+//! Verifies a deployed contract's authenticity against the on-chain registry.
+//! Displays verification status, security scan results, and audit/review info.
+
+use anyhow::{Context, Result};
+use colored::Colorize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+// ── Response shapes ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct VerificationResult {
+    pub address: String,
+    pub network: String,
+    pub name: Option<String>,
+    pub is_verified: bool,
+    pub verification_status: String, // "verified" | "unverified" | "pending" | "failed"
+    pub security_scan: Option<SecurityScan>,
+    pub audit: Option<AuditInfo>,
+    pub publisher: Option<String>,
+    pub wasm_hash: Option<String>,
+    pub verified_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SecurityScan {
+    pub status: String, // "clean" | "warning" | "critical"
+    pub vulnerabilities: u64,
+    pub warnings: u64,
+    pub last_scanned_at: Option<String>,
+    pub findings: Vec<ScanFinding>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ScanFinding {
+    pub severity: String,
+    pub title: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AuditInfo {
+    pub auditor: Option<String>,
+    pub report_url: Option<String>,
+    pub audited_at: Option<String>,
+    pub passed: bool,
+}
+
+// ── Main entry point ─────────────────────────────────────────────────────────
+
+/// `soroban-registry contract verify <address> --network <network> [--json]`
+pub async fn run(api_url: &str, address: &str, network: &str, json: bool) -> Result<()> {
+    log::debug!(
+        "contract verify | address={} network={} api_url={}",
+        address,
+        network,
+        api_url
+    );
+
+    let client = reqwest::Client::new();
+
+    // ── 1. Fetch contract from registry by on-chain address ──────────────────
+    let search_url = format!(
+        "{}/api/contracts?contract_id={}&network={}",
+        api_url, address, network
+    );
+
+    log::debug!("GET {}", search_url);
+
+    let response = client
+        .get(&search_url)
+        .send()
+        .await
+        .context("Failed to connect to registry API. Is the registry running?")?;
+
+    let status = response.status();
+
+    if status == reqwest::StatusCode::NOT_FOUND {
+        if json {
+            let out = serde_json::json!({
+                "address": address,
+                "network": network,
+                "is_verified": false,
+                "verification_status": "not_found",
+                "error": "Contract not found in registry"
+            });
+            println!("{}", serde_json::to_string_pretty(&out)?);
+        } else {
+            print_header();
+            println!(
+                "{} Contract {} not found in the {} registry.",
+                "✗".red().bold(),
+                address.bright_black(),
+                network.bright_blue()
+            );
+            println!(
+                "\n  {}: Use 'soroban-registry search' to discover registered contracts.",
+                "Hint".bold()
+            );
+            print_footer();
+        }
+        return Ok(());
+    }
+
+    if !status.is_success() {
+        let err = response.text().await.unwrap_or_default();
+        anyhow::bail!("Registry API error ({}): {}", status, err);
+    }
+
+    let raw: Value = response
+        .json()
+        .await
+        .context("Failed to parse registry response")?;
+
+    // The API may return either a paginated list or a single object
+    let contract = extract_contract(&raw, address)?;
+
+    // ── 2. Build VerificationResult from registry response ───────────────────
+    let result = build_result(&contract, address, network);
+
+    // ── 3. Fetch verification detail (security scan + audit) ─────────────────
+    let detail = fetch_detail(api_url, &client, &contract).await;
+
+    // ── 4. Output ─────────────────────────────────────────────────────────────
+    if json {
+        print_json(&result, &detail)?;
+    } else {
+        print_human(&result, &detail);
+    }
+
+    Ok(())
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Pull the first contract item from either a paginated list or a direct object.
+fn extract_contract<'a>(raw: &'a Value, address: &str) -> Result<Value> {
+    // Paginated: { items: [...] }
+    if let Some(items) = raw["items"].as_array() {
+        return items
+            .iter()
+            .find(|c| {
+                c["contract_id"].as_str().map_or(false, |id| id == address)
+                    || c["network_configs"].as_object().map_or(false, |nc| {
+                        nc.values()
+                            .any(|v| v["contract_id"].as_str() == Some(address))
+                    })
+            })
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Contract address '{}' not found in registry response",
+                    address
+                )
+            });
+    }
+
+    // Direct object
+    if raw.is_object() && (raw["contract_id"].is_string() || raw["id"].is_string()) {
+        return Ok(raw.clone());
+    }
+
+    anyhow::bail!("Unexpected registry response format")
+}
+
+fn build_result(contract: &Value, address: &str, network: &str) -> VerificationResult {
+    let is_verified = contract["is_verified"].as_bool().unwrap_or(false);
+    let verification_status = if is_verified {
+        "verified"
+    } else {
+        "unverified"
+    }
+    .to_string();
+
+    VerificationResult {
+        address: address.to_string(),
+        network: network.to_string(),
+        name: contract["name"].as_str().map(str::to_string),
+        is_verified,
+        verification_status,
+        security_scan: None,
+        audit: None,
+        publisher: contract["publisher_address"]
+            .as_str()
+            .or(contract["publisher"].as_str())
+            .map(str::to_string),
+        wasm_hash: contract["wasm_hash"].as_str().map(str::to_string),
+        verified_at: contract["verified_at"]
+            .as_str()
+            .or(contract["updated_at"].as_str())
+            .map(str::to_string),
+    }
+}
+
+/// Try to fetch verification detail endpoint. Non-fatal — returns None on error.
+async fn fetch_detail(api_url: &str, client: &reqwest::Client, contract: &Value) -> Option<Value> {
+    let id = contract["id"]
+        .as_str()
+        .or(contract["contract_id"].as_str())?;
+
+    let url = format!("{}/api/contracts/{}/verification-status", api_url, id);
+    log::debug!("GET {}", url);
+
+    let res = client.get(&url).send().await.ok()?;
+    if res.status().is_success() {
+        res.json::<Value>().await.ok()
+    } else {
+        None
+    }
+}
+
+fn print_json(result: &VerificationResult, detail: &Option<Value>) -> Result<()> {
+    let mut out = serde_json::to_value(result)?;
+
+    if let Some(d) = detail {
+        // Merge detail fields into output
+        if let (Some(obj), Some(dobj)) = (out.as_object_mut(), d.as_object()) {
+            for (k, v) in dobj {
+                obj.entry(k).or_insert(v.clone());
+            }
+        }
+    }
+
+    println!("{}", serde_json::to_string_pretty(&out)?);
+    Ok(())
+}
+
+fn print_header() {
+    println!();
+    println!("{}", "Contract Verification".bold().cyan());
+    println!("{}", "═".repeat(60).cyan());
+}
+
+fn print_footer() {
+    println!("{}", "═".repeat(60).cyan());
+    println!();
+}
+
+fn print_human(result: &VerificationResult, detail: &Option<Value>) {
+    print_header();
+
+    // ── Basic info ───────────────────────────────────────────────────────────
+    if let Some(name) = &result.name {
+        println!("  {}  {}", "Contract:".bold(), name.bold());
+    }
+    println!(
+        "  {}   {}",
+        "Address:".bold(),
+        result.address.bright_black()
+    );
+    println!("  {}   {}", "Network:".bold(), result.network.bright_blue());
+
+    if let Some(publisher) = &result.publisher {
+        println!("  {} {}", "Publisher:".bold(), publisher.bright_black());
+    }
+
+    if let Some(wasm_hash) = &result.wasm_hash {
+        println!("  {} {}", "WASM Hash:".bold(), wasm_hash.bright_black());
+    }
+
+    println!();
+
+    // ── Verification status ──────────────────────────────────────────────────
+    let (icon, status_label) = if result.is_verified {
+        ("✔".green().bold(), "VERIFIED".green().bold())
+    } else {
+        ("✘".red().bold(), "UNVERIFIED".red().bold())
+    };
+
+    println!("  {} Verification Status: {}", icon, status_label);
+
+    if let Some(verified_at) = &result.verified_at {
+        println!("     {} {}", "Last updated:".dimmed(), verified_at.dimmed());
+    }
+
+    println!();
+
+    // ── Security scan ────────────────────────────────────────────────────────
+    println!("  {}", "Security Scan".bold().underline());
+
+    let scan_status = detail
+        .as_ref()
+        .and_then(|d| d["security_scan"]["status"].as_str())
+        .unwrap_or("unknown");
+
+    let scan_label = match scan_status {
+        "clean" => "Clean — no vulnerabilities found".green().bold(),
+        "warning" => "Warning — potential issues detected".yellow().bold(),
+        "critical" => "Critical — vulnerabilities detected".red().bold(),
+        _ => "Not scanned".dimmed().bold(),
+    };
+
+    println!("  Status: {}", scan_label);
+
+    if let Some(d) = detail {
+        let vulns = d["security_scan"]["vulnerabilities"].as_u64().unwrap_or(0);
+        let warnings = d["security_scan"]["warnings"].as_u64().unwrap_or(0);
+
+        if scan_status != "unknown" {
+            println!(
+                "  Vulnerabilities: {}  Warnings: {}",
+                if vulns > 0 {
+                    vulns.to_string().red().bold()
+                } else {
+                    vulns.to_string().green().bold()
+                },
+                if warnings > 0 {
+                    warnings.to_string().yellow().bold()
+                } else {
+                    warnings.to_string().green().bold()
+                }
+            );
+        }
+
+        if let Some(findings) = d["security_scan"]["findings"].as_array() {
+            if !findings.is_empty() {
+                println!("\n  {}", "Findings:".bold());
+                for f in findings.iter().take(5) {
+                    let sev = f["severity"].as_str().unwrap_or("info");
+                    let title = f["title"].as_str().unwrap_or("Unknown finding");
+                    let sev_label = match sev {
+                        "critical" => format!("[{}]", sev.to_uppercase()).red().bold(),
+                        "high" => format!("[{}]", sev.to_uppercase()).red(),
+                        "medium" => format!("[{}]", sev.to_uppercase()).yellow(),
+                        "low" => format!("[{}]", sev.to_uppercase()).bright_black(),
+                        _ => format!("[{}]", sev.to_uppercase()).normal(),
+                    };
+                    println!("    {} {}", sev_label, title);
+                    if let Some(desc) = f["description"].as_str() {
+                        println!("       {}", desc.dimmed());
+                    }
+                }
+                if findings.len() > 5 {
+                    println!("    ...and {} more findings", findings.len() - 5);
+                }
+            }
+        }
+
+        println!();
+
+        // ── Audit info ───────────────────────────────────────────────────────
+        println!("  {}", "Audit / Review".bold().underline());
+
+        let audit_passed = d["audit"]["passed"].as_bool();
+        match audit_passed {
+            Some(true) => println!("  {} {}", "✔".green(), "Audit passed".green().bold()),
+            Some(false) => println!("  {} {}", "✘".red(), "Audit failed".red().bold()),
+            None => println!("  {}", "No audit record".dimmed()),
+        }
+
+        if let Some(auditor) = d["audit"]["auditor"].as_str() {
+            println!("  {}: {}", "Auditor".bold(), auditor);
+        }
+        if let Some(url) = d["audit"]["report_url"].as_str() {
+            println!("  {}: {}", "Report".bold(), url.bright_blue());
+        }
+        if let Some(at) = d["audit"]["audited_at"].as_str() {
+            println!("  {}: {}", "Audited at".bold(), at.dimmed());
+        }
+
+        println!();
+    }
+
+    // ── Summary line ─────────────────────────────────────────────────────────
+    print_footer();
+
+    if result.is_verified && scan_status != "critical" {
+        println!(
+            "  {} Contract {} is verified and safe to interact with.\n",
+            "✔".green().bold(),
+            result.address.bold()
+        );
+    } else if !result.is_verified {
+        println!(
+            "  {} Contract {} is NOT verified — proceed with caution.\n",
+            "⚠".yellow().bold(),
+            result.address.bold()
+        );
+        println!(
+            "  {}: Run 'soroban-registry search {}' to find more information.\n",
+            "Tip".bold(),
+            result.address
+        );
+    } else {
+        println!(
+            "  {} Contract {} has security issues — review findings above.\n",
+            "✘".red().bold(),
+            result.address.bold()
+        );
+    }
+}

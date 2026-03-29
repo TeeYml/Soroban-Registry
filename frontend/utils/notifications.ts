@@ -34,7 +34,7 @@ export async function sendDesktopNotification(
 
     if ('serviceWorker' in navigator) {
       const registration = await navigator.serviceWorker.ready;
-      registration.showNotification(title, notificationOptions as any);
+      registration.showNotification(title, notificationOptions as NotificationOptions & Parameters<ServiceWorkerRegistration['showNotification']>[1]);
     } else {
       new Notification(title, notificationOptions);
     }

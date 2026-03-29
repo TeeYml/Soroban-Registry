@@ -1,0 +1,17 @@
+.soroban-registry-ci:
+  image: rust:latest
+  variables:
+    CONTRACT_PATH: "."
+    NETWORK: "testnet"
+    SKIP_SCAN: "false"
+  before_script:
+    - rustup target add wasm32-unknown-unknown
+    - cargo install soroban-cli --features opt
+    - cargo install --path ./cli
+  script:
+    - |
+      CMD="soroban-registry cicd run --contract-path $CONTRACT_PATH --network $NETWORK"
+      if [ "$SKIP_SCAN" = "true" ]; then CMD="$CMD --skip-scan"; fi
+      eval $CMD
+  rules:
+    - if: $CI_COMMIT_TAG

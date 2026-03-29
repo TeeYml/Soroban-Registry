@@ -13,6 +13,12 @@ export default function CompatibilityTestingPage() {
     const idParam = params.id;
     const contractId = Array.isArray(idParam) ? idParam[0] : idParam;
 
+    const { data: contract } = useQuery({
+        queryKey: ['contract', contractId],
+        queryFn: () => api.getContract(contractId!),
+        enabled: !!contractId,
+    });
+
     if (!contractId) {
         return (
             <div className="min-h-screen bg-background text-foreground">
@@ -34,11 +40,6 @@ export default function CompatibilityTestingPage() {
             </div>
         );
     }
-
-    const { data: contract } = useQuery({
-        queryKey: ['contract', contractId],
-        queryFn: () => api.getContract(contractId),
-    });
 
     return (
         <div className="min-h-screen bg-background text-foreground">

@@ -14,7 +14,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use std::net::SocketAddr;
-use uuid::Uuid;
 
 use crate::error::ApiError;
 
@@ -42,13 +41,13 @@ pub async fn payload_size_validation_middleware(
     next: Next,
 ) -> Result<Response, Response> {
     let max_bytes = get_max_payload_bytes();
+    let request_id = crate::request_tracing::get_or_create_request_id(&req);
 
     // Check Content-Length header
     if let Some(content_length_str) = req.headers().get(HEADER_CONTENT_LENGTH) {
         if let Ok(content_length_str) = content_length_str.to_str() {
             if let Ok(size) = content_length_str.parse::<u64>() {
                 if size > max_bytes {
-                    let correlation_id = Uuid::new_v4().to_string();
                     let max_mb = max_bytes / (1024 * 1024);
 
                     // Log the violation
@@ -63,7 +62,7 @@ pub async fn payload_size_validation_middleware(
                         size as usize,
                         max_bytes as usize,
                         path,
-                        &correlation_id,
+                        &request_id,
                     );
 
                     return Err(ApiError::new(
@@ -78,7 +77,7 @@ pub async fn payload_size_validation_middleware(
                         "max_size_mb": max_mb,
                         "max_size_bytes": max_bytes,
                         "provided_size_bytes": size,
-                        "correlation_id": correlation_id
+                        "correlation_id": request_id
                     }))
                     .into_response());
                 }

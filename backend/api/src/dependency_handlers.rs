@@ -19,14 +19,13 @@ pub async fn get_contract_dependencies(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<DependencyResponse>> {
     // 1. Fetch the root contract
-    let root_contract = sqlx::query(
-        "SELECT id, contract_id, name, is_verified FROM contracts WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| db_internal_error("get root contract for dependencies", err))?
-    .ok_or_else(|| ApiError::not_found("ContractNotFound", "Contract not found"))?;
+    let root_contract =
+        sqlx::query("SELECT id, contract_id, name, is_verified FROM contracts WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| db_internal_error("get root contract for dependencies", err))?
+            .ok_or_else(|| ApiError::not_found("ContractNotFound", "Contract not found"))?;
 
     let root_internal_id: Uuid = root_contract.get("id");
     let root_c_id: String = root_contract.get("contract_id");
@@ -34,7 +33,11 @@ pub async fn get_contract_dependencies(
     let is_verified: bool = root_contract.get("is_verified");
 
     // Default status for root
-    let root_status = if is_verified { "verified" } else { "unverified" };
+    let root_status = if is_verified {
+        "verified"
+    } else {
+        "unverified"
+    };
 
     // 2. Build the tree using DFS and a visited set to detect circular references
     let mut visited = HashSet::new();
@@ -52,7 +55,8 @@ pub async fn get_contract_dependencies(
         root_internal_id,
         &mut visited,
         1, // Current depth
-    ).await?;
+    )
+    .await?;
 
     let root_node = DependencyNode {
         contract_id: root_c_id,
@@ -113,7 +117,7 @@ async fn build_dependency_tree(
         LEFT JOIN contracts c ON c.contract_id = cd.callee_contract_id
         WHERE cd.caller_id = $1
         ORDER BY cd.call_volume DESC
-        "#
+        "#,
     )
     .bind(caller_internal_id)
     .fetch_all(&ctx.db)
@@ -181,16 +185,16 @@ mod tests {
     #[tokio::test]
     async fn test_circular_dependency_logic() {
         // We can test the visited set logic without db if we want,
-        // but since build_dependency_tree requires a db transaction, 
+        // but since build_dependency_tree requires a db transaction,
         // a pure unit test of the circular logic is best done by asserting the behavior of visited sets.
         let mut visited = HashSet::new();
         let id1 = Uuid::new_v4();
         let id2 = Uuid::new_v4();
-        
+
         visited.insert(id1);
-        
+
         let mut is_circular = false;
-        
+
         // Simulate finding id2
         if visited.contains(&id2) {
             is_circular = true;
@@ -201,7 +205,7 @@ mod tests {
                 is_circular = true;
             }
         }
-        
+
         assert!(is_circular, "Circular reference should be detected");
     }
 }

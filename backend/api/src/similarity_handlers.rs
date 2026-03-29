@@ -144,7 +144,10 @@ pub async fn analyze_contract_similarity_batch(
         let target = fetch_contract_input(&state.db, contract_id).await?;
         let others = fetch_other_contract_inputs(&state.db, contract_id).await?;
         let results = analyze_and_persist(&state.db, &target, &others, limit).await?;
-        total_flagged += results.iter().filter(|item| item.flagged_for_review).count();
+        total_flagged += results
+            .iter()
+            .filter(|item| item.flagged_for_review)
+            .count();
 
         items.push(BatchSimilarityAnalysisItem {
             contract_id,
@@ -161,7 +164,10 @@ pub async fn analyze_contract_similarity_batch(
     }))
 }
 
-async fn fetch_contract_input(pool: &PgPool, contract_id: Uuid) -> ApiResult<ContractAnalysisInput> {
+async fn fetch_contract_input(
+    pool: &PgPool,
+    contract_id: Uuid,
+) -> ApiResult<ContractAnalysisInput> {
     let row: Option<ContractAnalysisRow> = sqlx::query_as(
         r#"
         SELECT

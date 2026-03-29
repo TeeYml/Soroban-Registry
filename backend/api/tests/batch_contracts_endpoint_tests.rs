@@ -62,7 +62,10 @@ async fn batch_endpoint_returns_ordered_results_under_threshold() {
 
     let started = Instant::now();
     let batch_res = client
-        .post(format!("{}/api/contracts/batch?fields=id,name,address", base))
+        .post(format!(
+            "{}/api/contracts/batch?fields=id,name,address",
+            base
+        ))
         .json(&requested_ids)
         .send()
         .await

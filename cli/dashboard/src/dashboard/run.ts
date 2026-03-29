@@ -3,13 +3,18 @@ import { DashboardStore } from "./state/store";
 import { RenderScheduler } from "./render/render_scheduler";
 import { RegistryWsClient } from "./ws/client";
 import { DashboardApp } from "./ui/dashboard_app";
+import { advanceAnimationFrame } from "./ui/skeleton";
 
-export async function runDashboard(params: { refreshRateMs: number; network?: string; category?: string }): Promise<void> {
+export async function runDashboard(params: {
+  refreshRateMs: number;
+  network?: string;
+  category?: string;
+}): Promise<void> {
   const wsUrl = process.env.SOROBAN_REGISTRY_WS_URL ?? "ws://127.0.0.1:8787";
 
   const initialFilters: DashboardFilters = {
     network: params.network,
-    category: params.category
+    category: params.category,
   };
 
   const store = new DashboardStore({ wsUrl, filters: initialFilters });
@@ -37,7 +42,7 @@ export async function runDashboard(params: { refreshRateMs: number; network?: st
       ws.sendJson({ type: "set_filters", payload: { filters } });
       scheduler.request();
     },
-    requestRender: () => scheduler.request()
+    requestRender: () => scheduler.request(),
   });
 
   const scheduler = new RenderScheduler(params.refreshRateMs, () => {
@@ -55,7 +60,10 @@ export async function runDashboard(params: { refreshRateMs: number; network?: st
   store.subscribe(() => scheduler.request());
 
   ws.on("open", () => {
-    store.setConnection({ status: "connected", wsUrl, connectedAt: Date.now() }, "ws_open");
+    store.setConnection(
+      { status: "connected", wsUrl, connectedAt: Date.now() },
+      "ws_open",
+    );
   });
 
   ws.on("latency", (latencyMs) => {
@@ -73,7 +81,7 @@ export async function runDashboard(params: { refreshRateMs: number; network?: st
         network: ev.payload.network,
         category: ev.payload.category,
         publisher: ev.payload.publisher,
-        ts: Date.parse(ev.payload.timestamp) || Date.now()
+        ts: Date.parse(ev.payload.timestamp) || Date.now(),
       });
       return;
     }
@@ -83,7 +91,7 @@ export async function runDashboard(params: { refreshRateMs: number; network?: st
         id: ev.payload.id,
         contractId: ev.payload.contractId,
         network: ev.payload.network,
-        ts: Date.parse(ev.payload.timestamp) || Date.now()
+        ts: Date.parse(ev.payload.timestamp) || Date.now(),
       });
       return;
     }
@@ -91,7 +99,10 @@ export async function runDashboard(params: { refreshRateMs: number; network?: st
     if (ev.type === "network_status") {
       const conn = store.getState().connection;
       if (conn.status === "connected") {
-        store.setConnection({ ...conn, latencyMs: ev.payload.latencyMs }, "network_status");
+        store.setConnection(
+          { ...conn, latencyMs: ev.payload.latencyMs },
+          "network_status",
+        );
       }
     }
   });
@@ -99,9 +110,20 @@ export async function runDashboard(params: { refreshRateMs: number; network?: st
   ws.on("error", ({ message }) => {
     const conn = store.getState().connection;
     if (conn.status === "connected") {
-      store.setConnection({ status: "disconnected", wsUrl, lastConnectedAt: conn.connectedAt, lastError: message }, "ws_error");
+      store.setConnection(
+        {
+          status: "disconnected",
+          wsUrl,
+          lastConnectedAt: conn.connectedAt,
+          lastError: message,
+        },
+        "ws_error",
+      );
     } else {
-      store.setConnection({ ...conn, status: "disconnected", lastError: message }, "ws_error");
+      store.setConnection(
+        { ...conn, status: "disconnected", lastError: message },
+        "ws_error",
+      );
     }
   });
 
@@ -109,17 +131,34 @@ export async function runDashboard(params: { refreshRateMs: number; network?: st
     if (shuttingDown) return;
     const lastError = reason || `closed (${code})`;
     const conn = store.getState().connection;
-    const lastConnectedAt = conn.status === "connected" ? conn.connectedAt : conn.lastConnectedAt;
-    const { attempt, nextRetryAt } = ws.scheduleReconnect({ filters: store.getState().filters, lastError });
-    store.setConnection({ status: "reconnecting", wsUrl, attempt, nextRetryAt, lastError, lastConnectedAt }, "ws_close");
+    const lastConnectedAt =
+      conn.status === "connected" ? conn.connectedAt : conn.lastConnectedAt;
+    const { attempt, nextRetryAt } = ws.scheduleReconnect({
+      filters: store.getState().filters,
+      lastError,
+    });
+    store.setConnection(
+      {
+        status: "reconnecting",
+        wsUrl,
+        attempt,
+        nextRetryAt,
+        lastError,
+        lastConnectedAt,
+      },
+      "ws_close",
+    );
   });
 
   ws.connect(store.getState().filters);
 
-  tickTimer = setInterval(() => store.tickNow(Date.now()), 1_000);
+  tickTimer = setInterval(() => {
+    store.tickNow(Date.now());
+    advanceAnimationFrame();
+    scheduler.request();
+  }, 1_000);
   scheduler.request();
 
   await done;
   cleanup();
 }
-

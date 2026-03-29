@@ -203,3 +203,86 @@ test('getContractInteractions: success and failure', async () => {
   fetchMock.mockResponseOnce('Bad', { status: 500 });
   await expect(api.getContractInteractions('c1')).rejects.toThrow();
 });
+
+// ── Comment / Discussion tests (Issue #516) ───────────────────────────────────
+
+test('getComments: returns comment list from /api/contracts/:id/comments', async () => {
+  // Force non-window environment so the real API path is taken
+  const windowSpy = jest.spyOn(global, 'window', 'get').mockReturnValue(undefined as unknown as Window & typeof globalThis);
+  const mock = {
+    items: [
+      {
+        id: 'c1',
+        contract_id: 'contract-1',
+        parent_id: null,
+        author: 'GABC...',
+        body: 'Test comment',
+        created_at: new Date().toISOString(),
+        score: 0,
+        flagged: false,
+        flag_count: 0,
+      },
+    ],
+    total: 1,
+  };
+
+  fetchMock.mockResponseOnce(JSON.stringify(mock), { status: 200 });
+  const res = await api.getComments('contract-1');
+  expect(res.items).toHaveLength(1);
+  expect(res.total).toBe(1);
+  const calledUrl = fetchMock.mock.calls[0][0] as string;
+  expect(calledUrl).toContain('/api/contracts/contract-1/comments');
+  windowSpy.mockRestore();
+});
+
+test('postComment: sends POST to /api/contracts/:id/comments with body', async () => {
+  const windowSpy = jest.spyOn(global, 'window', 'get').mockReturnValue(undefined as unknown as Window & typeof globalThis);
+  const newComment = {
+    id: 'new-1',
+    contract_id: 'contract-1',
+    parent_id: null,
+    author: 'GABC...',
+    body: 'Hello',
+    created_at: new Date().toISOString(),
+    score: 0,
+    flagged: false,
+    flag_count: 0,
+  };
+
+  fetchMock.mockResponseOnce(JSON.stringify(newComment), { status: 201 });
+  const res = await api.postComment('contract-1', 'Hello');
+  expect(res.id).toBe('new-1');
+  const [calledUrl, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+  expect(calledUrl).toContain('/api/contracts/contract-1/comments');
+  expect(opts.method).toBe('POST');
+  expect(JSON.parse(opts.body as string)).toMatchObject({ body: 'Hello' });
+  windowSpy.mockRestore();
+});
+
+test('voteComment: sends POST to /api/comments/:id/vote with direction', async () => {
+  const windowSpy = jest.spyOn(global, 'window', 'get').mockReturnValue(undefined as unknown as Window & typeof globalThis);
+  const voteRes = { comment_id: 'cm1', direction: 'up' };
+
+  fetchMock.mockResponseOnce(JSON.stringify(voteRes), { status: 200 });
+  const res = await api.voteComment('cm1', 'contract-1', 'up');
+  expect(res.direction).toBe('up');
+  const [calledUrl, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+  expect(calledUrl).toContain('/api/comments/cm1/vote');
+  expect(opts.method).toBe('POST');
+  expect(JSON.parse(opts.body as string)).toMatchObject({ direction: 'up' });
+  windowSpy.mockRestore();
+});
+
+test('flagComment: sends POST to /api/comments/:id/flag with reason', async () => {
+  const windowSpy = jest.spyOn(global, 'window', 'get').mockReturnValue(undefined as unknown as Window & typeof globalThis);
+  const flagRes = { comment_id: 'cm2', reason: 'spam' };
+
+  fetchMock.mockResponseOnce(JSON.stringify(flagRes), { status: 200 });
+  const res = await api.flagComment('cm2', 'contract-1', 'spam');
+  expect(res.reason).toBe('spam');
+  const [calledUrl, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+  expect(calledUrl).toContain('/api/comments/cm2/flag');
+  expect(opts.method).toBe('POST');
+  expect(JSON.parse(opts.body as string)).toMatchObject({ reason: 'spam' });
+  windowSpy.mockRestore();
+});

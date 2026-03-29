@@ -25,6 +25,13 @@ function ApiDocsContent() {
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
   const version = searchParams?.get("version") ?? undefined;
 
+  const specUrl = useMemo(() => {
+    if (!id) return "";
+    const url = new URL(`${API_URL}/api/contracts/${id}/openapi.yaml`);
+    if (version) url.searchParams.set("version", version);
+    return url.toString();
+  }, [id, version]);
+
   if (!id) {
     return (
       <div className="min-h-screen bg-background text-foreground">
@@ -48,12 +55,6 @@ function ApiDocsContent() {
       </div>
     );
   }
-
-  const specUrl = useMemo(() => {
-    const url = new URL(`${API_URL}/api/contracts/${id}/openapi.yaml`);
-    if (version) url.searchParams.set("version", version);
-    return url.toString();
-  }, [id, version]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">

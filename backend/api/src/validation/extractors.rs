@@ -12,7 +12,6 @@ use axum::{
 use chrono::{SecondsFormat, Utc};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
-use uuid::Uuid;
 
 /// A field-level validation error
 #[derive(Debug, Clone, Serialize)]
@@ -40,7 +39,7 @@ pub struct ValidationErrorResponse {
 }
 
 impl ValidationErrorResponse {
-    pub fn new(errors: Vec<FieldError>) -> Self {
+    pub fn new(errors: Vec<FieldError>, correlation_id: String) -> Self {
         let error_summary = if errors.len() == 1 {
             format!("Validation failed for field '{}'", errors[0].field)
         } else {
@@ -53,7 +52,7 @@ impl ValidationErrorResponse {
             details: json!({
                 "reason": "VALIDATION_ERROR",
                 "field_errors": errors,
-                "correlation_id": Uuid::new_v4().to_string()
+                "correlation_id": correlation_id
             }),
             timestamp: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
         }
@@ -80,8 +79,15 @@ impl ValidationError {
 
 impl axum::response::IntoResponse for ValidationError {
     fn into_response(self) -> axum::response::Response {
-        let response = ValidationErrorResponse::new(self.errors);
-        (StatusCode::BAD_REQUEST, Json(response)).into_response()
+        let correlation_id = crate::request_tracing::current_request_id()
+            .unwrap_or_else(crate::request_tracing::generate_request_id);
+        let response = ValidationErrorResponse::new(self.errors, correlation_id.clone());
+        let mut http_response = (StatusCode::BAD_REQUEST, Json(response)).into_response();
+        crate::request_tracing::attach_request_id_headers(
+            http_response.headers_mut(),
+            &correlation_id,
+        );
+        http_response
     }
 }
 
@@ -136,12 +142,7 @@ where
             .map(|addr| addr.ip())
             .unwrap_or_else(|| std::net::IpAddr::from([127, 0, 0, 1]));
 
-        let correlation_id = req
-            .headers()
-            .get("x-correlation-id")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("unknown")
-            .to_string();
+        let correlation_id = crate::request_tracing::get_or_create_request_id(&req);
 
         let path = req
             .extensions()
@@ -322,7 +323,7 @@ mod tests {
             FieldError::new("name", "must be at least 1 character"),
         ];
 
-        let response = ValidationErrorResponse::new(errors);
+        let response = ValidationErrorResponse::new(errors, "test-correlation-id".to_string());
 
         assert_eq!(response.error_code, "BAD_REQUEST");
         assert_eq!(response.details["reason"], "VALIDATION_ERROR");
@@ -336,7 +337,7 @@ mod tests {
     #[test]
     fn test_single_error_response() {
         let errors = vec![FieldError::new("name", "is required")];
-        let response = ValidationErrorResponse::new(errors);
+        let response = ValidationErrorResponse::new(errors, "test-correlation-id".to_string());
 
         assert!(response.message.contains("field 'name'"));
     }

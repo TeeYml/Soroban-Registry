@@ -7,11 +7,12 @@ import CategoryDistributionPie from '@/components/analytics/CategoryDistribution
 import DeploymentTrendGraph from '@/components/analytics/DeploymentTrendGraph';
 import NetworkUsageStats from '@/components/analytics/NetworkUsageStats';
 import RecentAdditionsTimeline from '@/components/analytics/RecentAdditionsTimeline';
+import DeploymentTimeline from '@/components/analytics/DeploymentTimeline';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function AnalyticsDashboard() {
-  const [data, setData] = useState<any>(null);
-  const [trending, setTrending] = useState<any[]>([]);
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [trending, setTrending] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -73,24 +74,33 @@ export default function AnalyticsDashboard() {
            </div>
         ) : (
           <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="w-full">
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <DeploymentTimeline initialData={data?.recent_additions as any || []} />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                 <div className="col-span-12 lg:col-span-8">
-                    <NetworkUsageStats data={data?.network_usage || []} />
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <NetworkUsageStats data={(data?.network_usage as any[]) || []} />
                 </div>
                 <div className="col-span-12 lg:col-span-4 bg-card border border-border rounded-xl shadow-sm p-5 h-[350px]">
                     <h3 className="text-sm font-semibold text-foreground mb-4">Category Distribution</h3>
-                    <CategoryDistributionPie data={data?.category_distribution || []} />
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <CategoryDistributionPie data={(data?.category_distribution as any[]) || []} />
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-card border border-border rounded-xl shadow-sm p-5 min-h-[350px]">
                     <h3 className="text-sm font-semibold text-foreground mb-4">Deployment Trends (30d)</h3>
-                    <DeploymentTrendGraph data={data?.deployment_trends || []} />
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <DeploymentTrendGraph data={(data?.deployment_trends as any[]) || []} />
                 </div>
                 <div className="bg-card border border-border rounded-xl shadow-sm p-5 min-h-[350px]">
                     <h3 className="text-sm font-semibold text-foreground mb-4">Recent Additions</h3>
-                    <RecentAdditionsTimeline data={data?.recent_additions || []} />
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <RecentAdditionsTimeline data={(data?.recent_additions as any[]) || []} />
                 </div>
             </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, X } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useRealtime } from '@/hooks/useRealtime';
 

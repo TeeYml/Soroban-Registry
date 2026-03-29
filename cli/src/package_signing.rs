@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Utc;
 use colored::Colorize;
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::{Signer, SigningKey, Verifier};
 use rand::rngs::OsRng;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -49,7 +49,7 @@ pub async fn sign_package(
     let url = format!("{}/api/signatures", api_url);
 
     let expires_dt = expires_at
-        .map(|s| chrono::DateTime::parse_from_rfc3339(s))
+        .map(chrono::DateTime::parse_from_rfc3339)
         .transpose()
         .context("Invalid expires_at format, use RFC3339 (e.g., 2025-12-31T23:59:59Z)")?
         .map(|dt| dt.with_timezone(&Utc));
@@ -539,12 +539,12 @@ fn derive_stellar_address(public_key_bytes: &[u8; 32]) -> String {
     use sha2::{Digest as _, Sha256};
 
     let sha256_hash = Sha256::digest(public_key_bytes);
-    let ripemd_hash = Ripemd160::digest(&sha256_hash);
+    let ripemd_hash = Ripemd160::digest(sha256_hash);
 
     let mut versioned = vec![0x00];
     versioned.extend_from_slice(&ripemd_hash);
 
-    let checksum = Sha256::digest(&Sha256::digest(&versioned));
+    let checksum = Sha256::digest(Sha256::digest(&versioned));
     versioned.extend_from_slice(&checksum[..4]);
 
     bs58::encode(&versioned).into_string()
@@ -559,7 +559,10 @@ pub fn verify_contract_local(
     signature_b64: &str,
     public_key_b64: &str,
 ) -> Result<()> {
-    println!("\n{}", "Verifying contract binary signature...".bold().cyan());
+    println!(
+        "\n{}",
+        "Verifying contract binary signature...".bold().cyan()
+    );
 
     let wasm_bytes = read_package_file(wasm_path)?;
     let wasm_hash = compute_hash(&wasm_bytes);

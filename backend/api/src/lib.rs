@@ -11,5 +11,6 @@ pub mod notification_handlers;
 pub mod notification_routes;
 pub mod post_incident_handlers;
 pub mod post_incident_routes;
+pub mod request_tracing;
 pub mod resource_tracking;
 pub mod state;

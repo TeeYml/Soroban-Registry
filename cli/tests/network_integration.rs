@@ -9,8 +9,7 @@ fn get_binary_path() -> PathBuf {
         return PathBuf::from(path);
     }
     // Fallback: look for the binary in target/debug
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
-        .unwrap_or_else(|_| ".".to_string());
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
     let binary_path = PathBuf::from(&manifest_dir)
         .join("target")
         .join("debug")

@@ -1,9 +1,17 @@
 import blessed from "blessed";
 import type { DashboardFilters, DashboardState } from "../types";
-import { selectFilteredDeployments, selectTrendingContracts } from "../state/selectors";
+import {
+  selectFilteredDeployments,
+  selectTrendingContracts,
+} from "../state/selectors";
 import { sparkline } from "../render/sparkline";
 import { clampStr, formatSince } from "../util/format";
 import { parseKeyValueFilters, promptLine } from "./modals";
+import {
+  createSkeletonList,
+  createSkeleton,
+  createAccessibleLoadingIndicator,
+} from "./skeleton";
 
 type FocusedPanel = "deployments" | "trending";
 
@@ -29,13 +37,13 @@ export class DashboardApp {
       onRefresh: () => void;
       onSetFilters: (filters: DashboardFilters) => void;
       requestRender: () => void;
-    }
+    },
   ) {
     this.screen = blessed.screen({
       smartCSR: true,
       fullUnicode: true,
       title: "Soroban Registry Dashboard",
-      dockBorders: true
+      dockBorders: true,
     });
 
     this.screen.key(["C-c", "q"], () => this.params.onQuit());
@@ -53,7 +61,7 @@ export class DashboardApp {
       right: 0,
       height: 3,
       border: "line",
-      style: { border: { fg: "cyan" } }
+      style: { border: { fg: "cyan" } },
     });
 
     const midTop = 3;
@@ -73,13 +81,13 @@ export class DashboardApp {
       tags: false,
       style: {
         border: { fg: "gray" },
-        selected: { bg: "blue" }
+        selected: { bg: "blue" },
       },
       scrollbar: {
         ch: " ",
         track: { bg: "gray" },
-        style: { bg: "yellow" }
-      }
+        style: { bg: "yellow" },
+      },
     });
 
     this.trendingList = blessed.list({
@@ -95,13 +103,13 @@ export class DashboardApp {
       tags: false,
       style: {
         border: { fg: "gray" },
-        selected: { bg: "blue" }
+        selected: { bg: "blue" },
       },
       scrollbar: {
         ch: " ",
         track: { bg: "gray" },
-        style: { bg: "yellow" }
-      }
+        style: { bg: "yellow" },
+      },
     });
 
     this.activityBox = blessed.box({
@@ -112,7 +120,7 @@ export class DashboardApp {
       bottom: 0,
       height: bottomHeight,
       border: "line",
-      style: { border: { fg: "gray" } }
+      style: { border: { fg: "gray" } },
     });
 
     this.applyFocusStyles();
@@ -148,14 +156,22 @@ export class DashboardApp {
     if (conn.status === "connected") {
       status = "CONNECTED";
       statusColor = "green";
-      details = conn.latencyMs !== undefined ? `latency ${conn.latencyMs}ms` : "latency --";
+      details =
+        conn.latencyMs !== undefined
+          ? `latency ${conn.latencyMs}ms`
+          : "latency --";
     } else if (conn.status === "reconnecting") {
       status = "RECONNECTING";
       statusColor = "yellow";
-      const inSec = Math.max(0, Math.ceil((conn.nextRetryAt - Date.now()) / 1000));
+      const inSec = Math.max(
+        0,
+        Math.ceil((conn.nextRetryAt - Date.now()) / 1000),
+      );
       details = `retry in ${inSec}s (attempt ${conn.attempt})`;
     } else {
-      details = conn.lastError ? `error: ${conn.lastError}` : "waiting for connection";
+      details = conn.lastError
+        ? `error: ${conn.lastError}`
+        : "waiting for connection";
     }
 
     const f = `network=${filters.network ?? "*"} category=${filters.category ?? "*"} query=${filters.query ?? ""}`;
@@ -163,7 +179,7 @@ export class DashboardApp {
     const content = [
       ` {bold}Network:{/bold} ${filters.network ?? "all"}   {bold}WS:{/bold} ${conn.wsUrl}`,
       ` {bold}Status:{/bold} {${statusColor}-fg}${status}{/${statusColor}-fg}   ${details}`,
-      ` {bold}Keys:{/bold} q quit · r refresh · f filters · / search · ←/→ switch panel · ↑/↓ scroll   ${f}`
+      ` {bold}Keys:{/bold} q quit · r refresh · f filters · / search · ←/→ switch panel · ↑/↓ scroll   ${f}`,
     ].join("\n");
 
     if (content !== this.lastHeader) {
@@ -175,9 +191,23 @@ export class DashboardApp {
   }
 
   private renderDeployments(state: DashboardState): void {
-    const items = selectFilteredDeployments(state).slice(0, 100);
-    const width = Math.max(10, Math.floor((this.deploymentsList.width as number) ?? 40) - 4);
+    const width = Math.max(
+      10,
+      Math.floor((this.deploymentsList.width as number) ?? 40) - 4,
+    );
 
+    // Show skeleton while loading
+    if (state.loading.deployments) {
+      const loadingIndicator = createAccessibleLoadingIndicator(
+        "deployments",
+        width,
+      );
+      const skeletonItems = createSkeletonList(10, width, "table-row");
+      this.deploymentsList.setItems([loadingIndicator, ...skeletonItems]);
+      return;
+    }
+
+    const items = selectFilteredDeployments(state).slice(0, 100);
     const key = `${items.length}:${items[0]?.id ?? ""}:${state.nowTs}`;
     if (key === this.lastDeploymentsKey) return;
     this.lastDeploymentsKey = key;
@@ -195,8 +225,26 @@ export class DashboardApp {
   }
 
   private renderTrending(state: DashboardState): void {
-    const items = selectTrendingContracts(state, { windowMs: 10 * 60_000, limit: 100 });
-    const width = Math.max(10, Math.floor((this.trendingList.width as number) ?? 40) - 4);
+    const width = Math.max(
+      10,
+      Math.floor((this.trendingList.width as number) ?? 40) - 4,
+    );
+
+    // Show skeleton while loading
+    if (state.loading.trending) {
+      const loadingIndicator = createAccessibleLoadingIndicator(
+        "trending contracts",
+        width,
+      );
+      const skeletonItems = createSkeletonList(10, width, "table-row");
+      this.trendingList.setItems([loadingIndicator, ...skeletonItems]);
+      return;
+    }
+
+    const items = selectTrendingContracts(state, {
+      windowMs: 10 * 60_000,
+      limit: 100,
+    });
 
     const key = `${items.length}:${items[0]?.contractId ?? ""}:${state.nowTs}`;
     if (key === this.lastTrendingKey) return;
@@ -216,6 +264,24 @@ export class DashboardApp {
 
   private renderActivity(state: DashboardState): void {
     const width = Math.max(20, (this.activityBox.width as number) - 4);
+
+    // Show skeleton while loading
+    if (state.loading.activity) {
+      const loadingIndicator = createAccessibleLoadingIndicator(
+        "activity data",
+        width,
+      );
+      const skeletonContent = [
+        loadingIndicator,
+        createSkeleton({ width, height: 1, variant: "line" }),
+        createSkeleton({ width, height: 1, variant: "line" }),
+        "",
+        createSkeleton({ width, height: 1, variant: "line" }),
+      ].join("\n");
+      this.activityBox.setContent(skeletonContent);
+      return;
+    }
+
     const buckets = state.activity.slice(-120);
     const deployments = buckets.map((b) => b.deployments);
     const interactions = buckets.map((b) => b.interactions);
@@ -235,8 +301,8 @@ export class DashboardApp {
         `Deployments: ${dLine}  max ${dMax}`,
         `Interactions: ${iLine}  max ${iMax}`,
         "",
-        "Tip: use f to filter (network/category), / to search by contract id."
-      ].join("\n")
+        "Tip: use f to filter (network/category), / to search by contract id.",
+      ].join("\n"),
     );
   }
 
@@ -255,7 +321,8 @@ export class DashboardApp {
 
   private onArrow(dir: "up" | "down"): void {
     if (this.modalActive) return;
-    const list = this.focused === "deployments" ? this.deploymentsList : this.trendingList;
+    const list =
+      this.focused === "deployments" ? this.deploymentsList : this.trendingList;
     if (dir === "up") list.up(1);
     else list.down(1);
     this.params.requestRender();
@@ -270,12 +337,16 @@ export class DashboardApp {
         screen: this.screen,
         title: "Filters",
         hint: "Enter: network=<name> category=<type>. Use empty value to clear, e.g. network= category=.\nExample: network=testnet category=dex",
-        initial: `network=${current.filters.network ?? ""} category=${current.filters.category ?? ""}`
+        initial: `network=${current.filters.network ?? ""} category=${current.filters.category ?? ""}`,
       });
       if (line === undefined) return;
 
       const parsed = parseKeyValueFilters(line);
-      const next: DashboardFilters = { ...current.filters, ...parsed, query: current.filters.query };
+      const next: DashboardFilters = {
+        ...current.filters,
+        ...parsed,
+        query: current.filters.query,
+      };
       this.params.onSetFilters(next);
     } finally {
       this.modalActive = false;
@@ -292,10 +363,13 @@ export class DashboardApp {
         screen: this.screen,
         title: "Search",
         hint: "Enter a substring to match contract id/publisher. Empty clears search.",
-        initial: current.filters.query ?? ""
+        initial: current.filters.query ?? "",
       });
       if (line === undefined) return;
-      const next: DashboardFilters = { ...current.filters, query: line.trim() ? line.trim() : undefined };
+      const next: DashboardFilters = {
+        ...current.filters,
+        query: line.trim() ? line.trim() : undefined,
+      };
       this.params.onSetFilters(next);
     } finally {
       this.modalActive = false;
@@ -303,4 +377,3 @@ export class DashboardApp {
     }
   }
 }
-

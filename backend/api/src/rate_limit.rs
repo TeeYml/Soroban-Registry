@@ -38,7 +38,7 @@ use axum::{
     extract::{connect_info::ConnectInfo, State},
     http::{
         header::{AUTHORIZATION, RETRY_AFTER},
-        HeaderName, HeaderValue, Request,
+        HeaderName, HeaderValue, Method, Request,
     },
     middleware::Next,
     response::{IntoResponse, Response},
@@ -462,7 +462,12 @@ fn ceil_duration_to_seconds(duration: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{http::{Request, StatusCode}, middleware, routing::get, Router};
+    use axum::{
+        http::{Request, StatusCode},
+        middleware,
+        routing::get,
+        Router,
+    };
     use tower::Service;
 
     fn test_app(anonymous_limit: u32, auth_limit: u32, window: Duration) -> Router<()> {

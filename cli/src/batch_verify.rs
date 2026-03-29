@@ -22,7 +22,7 @@ pub struct BatchContractEntry {
     pub version: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct BatchVerifyResponse {
     pub batch_id: String,
     pub total: usize,
@@ -35,7 +35,7 @@ pub struct BatchVerifyResponse {
     pub duration_ms: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct ContractVerifyResult {
     pub contract_id: String,
     pub version: Option<String>,
@@ -91,8 +91,16 @@ pub async fn run_batch_verify(
             skipped_duplicates.to_string().yellow()
         );
     }
-    println!("  {}: {}", "Initiated by".bold(), initiated_by.bright_black());
-    println!("  {}: {}s total / 5s per contract", "Timeout".bold(), BATCH_TIMEOUT_SECS);
+    println!(
+        "  {}: {}",
+        "Initiated by".bold(),
+        initiated_by.bright_black()
+    );
+    println!(
+        "  {}: {}s total / 5s per contract",
+        "Timeout".bold(),
+        BATCH_TIMEOUT_SECS
+    );
     println!();
 
     let request = BatchVerifyRequest {
@@ -142,8 +150,16 @@ pub async fn run_batch_verify(
 fn display_results(result: &BatchVerifyResponse) {
     println!("\n{}", "Batch Results".bold().cyan());
     println!("{}", "=".repeat(60).cyan());
-    println!("  {}: {}", "Batch ID".bold(), result.batch_id.bright_black());
-    println!("  {}: {}", "Initiated at".bold(), result.initiated_at.bright_black());
+    println!(
+        "  {}: {}",
+        "Batch ID".bold(),
+        result.batch_id.bright_black()
+    );
+    println!(
+        "  {}: {}",
+        "Initiated at".bold(),
+        result.initiated_at.bright_black()
+    );
     if let Some(ms) = result.duration_ms {
         println!("  {}: {}ms", "Duration".bold(), ms);
     }

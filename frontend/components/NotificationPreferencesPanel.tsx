@@ -1,8 +1,6 @@
 'use client';
 
-import { useState } from 'react';
 import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
-import { Bell, Check } from 'lucide-react';
 
 export default function NotificationPreferencesPanel() {
   const {
@@ -54,7 +52,7 @@ export default function NotificationPreferencesPanel() {
           <span className="font-medium">Enable Desktop Notifications</span>
         </label>
         <p className="text-xs text-muted-foreground ml-7">
-          Receive browser notifications even when you're not actively using the app
+          Receive browser notifications even when you&apos;re not actively using the app
         </p>
       </div>
 

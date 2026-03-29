@@ -183,7 +183,8 @@ pub static VERIFICATION_CACHE_MISSES: Lazy<IntCounter> = counter!(
     "Verification cache misses"
 );
 
-pub static REDIS_CACHE_HITS: Lazy<IntCounter> = counter!("redis_cache_hits_total", "Redis cache hits");
+pub static REDIS_CACHE_HITS: Lazy<IntCounter> =
+    counter!("redis_cache_hits_total", "Redis cache hits");
 pub static REDIS_CACHE_MISSES: Lazy<IntCounter> =
     counter!("redis_cache_misses_total", "Redis cache misses");
 

@@ -13,6 +13,8 @@ import { useToast } from '@/hooks/useToast';
 import { useVerificationFlow } from '@/hooks/useVerificationFlow';
 import type { VerificationDocument } from '@/types/verification';
 
+export const dynamic = 'force-dynamic';
+
 export default function VerifyContractPage() {
   const router = useRouter();
   const { showError, showSuccess, showInfo } = useToast();

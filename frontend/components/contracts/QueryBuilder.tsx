@@ -1,15 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  Plus, 
-  Trash2, 
-  ChevronRight, 
-  ChevronDown, 
-  Search, 
+import {
+  Plus,
+  Trash2,
+  Search,
   Filter,
-  Save,
-  X
+  Save
 } from 'lucide-react';
 import { 
   QueryNode, 
@@ -71,10 +68,10 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
 
   const handleAddCondition = (path: number[] = []) => {
     const newQuery = { ...query };
-    let target: any = newQuery;
-    
+    let target: QueryNode = newQuery;
+
     for (const index of path) {
-      target = target.conditions[index];
+      target = (target as { operator: QueryOperator; conditions: QueryNode[] }).conditions[index];
     }
 
     if ('conditions' in target) {
@@ -85,10 +82,10 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
 
   const handleAddGroup = (path: number[] = []) => {
     const newQuery = { ...query };
-    let target: any = newQuery;
-    
+    let target: QueryNode = newQuery;
+
     for (const index of path) {
-      target = target.conditions[index];
+      target = (target as { operator: QueryOperator; conditions: QueryNode[] }).conditions[index];
     }
 
     if ('conditions' in target) {
@@ -104,14 +101,14 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
 
   const handleRemove = (path: number[]) => {
     if (path.length === 0) return;
-    
+
     const newQuery = { ...query };
     const lastIndex = path[path.length - 1];
     const parentPath = path.slice(0, -1);
-    
-    let target: any = newQuery;
+
+    let target: QueryNode = newQuery;
     for (const index of parentPath) {
-      target = target.conditions[index];
+      target = (target as { operator: QueryOperator; conditions: QueryNode[] }).conditions[index];
     }
 
     if ('conditions' in target) {
@@ -127,10 +124,10 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
 
   const handleUpdateCondition = (path: number[], updates: Partial<QueryCondition>) => {
     const newQuery = { ...query };
-    let target: any = newQuery;
-    
+    let target: QueryNode = newQuery;
+
     for (const index of path) {
-      target = target.conditions[index];
+      target = (target as { operator: QueryOperator; conditions: QueryNode[] }).conditions[index];
     }
 
     Object.assign(target, updates);
@@ -139,15 +136,15 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
 
   const handleUpdateGroupOperator = (path: number[], operator: QueryOperator) => {
     const newQuery = { ...query };
-    let target: any = newQuery;
-    
+    let target: QueryNode = newQuery;
+
     if (path.length === 0) {
-      target.operator = operator;
+      (target as { operator: QueryOperator; conditions: QueryNode[] }).operator = operator;
     } else {
       for (const index of path) {
-        target = target.conditions[index];
+        target = (target as { operator: QueryOperator; conditions: QueryNode[] }).conditions[index];
       }
-      target.operator = operator;
+      (target as { operator: QueryOperator; conditions: QueryNode[] }).operator = operator;
     }
     updateQuery(newQuery);
   };
@@ -250,7 +247,7 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
     if (node.field === 'network') {
       return (
         <select 
-          value={node.value}
+          value={typeof node.value === 'string' ? node.value : String(node.value || '')}
           onChange={(e) => handleUpdateCondition(path, { value: e.target.value })}
           className="bg-background text-sm px-2 py-1 rounded border border-border outline-none focus:ring-1 focus:ring-primary flex-1 min-w-[150px]"
         >
@@ -263,7 +260,7 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
     if (node.field === 'category') {
       return (
         <select 
-          value={node.value}
+          value={typeof node.value === 'string' ? node.value : String(node.value || '')}
           onChange={(e) => handleUpdateCondition(path, { value: e.target.value })}
           className="bg-background text-sm px-2 py-1 rounded border border-border outline-none focus:ring-1 focus:ring-primary flex-1 min-w-[150px]"
         >
@@ -289,7 +286,7 @@ export default function QueryBuilder({ initialQuery, onChange, onSearch, onSave 
     return (
       <input 
         type="text"
-        value={node.value}
+        value={typeof node.value === 'string' ? node.value : String(node.value || '')}
         onChange={(e) => handleUpdateCondition(path, { value: e.target.value })}
         placeholder="Enter value..."
         className="bg-background text-sm px-3 py-1 rounded border border-border outline-none focus:ring-1 focus:ring-primary flex-1 min-w-[150px]"

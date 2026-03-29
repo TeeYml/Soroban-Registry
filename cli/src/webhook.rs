@@ -214,14 +214,12 @@ pub async fn create_webhook(
     let client = reqwest::Client::new();
 
     // Generate a secret key if not provided
-    let secret = secret_key
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let bytes: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
-            hex::encode(bytes)
-        });
+    let secret = secret_key.map(|s| s.to_string()).unwrap_or_else(|| {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let bytes: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
+        hex::encode(bytes)
+    });
 
     let body = serde_json::json!({
         "url": url,
@@ -247,13 +245,20 @@ pub async fn create_webhook(
     println!("{}", "=".repeat(60).green());
     println!("  {}: {}", "ID".bold(), webhook.id.bright_black());
     println!("  {}: {}", "URL".bold(), webhook.url);
-    println!("  {}: {}", "Events".bold(), webhook.events.join(", ").bright_blue());
+    println!(
+        "  {}: {}",
+        "Events".bold(),
+        webhook.events.join(", ").bright_blue()
+    );
     println!(
         "  {}: {}",
         "Secret Key".bold(),
         webhook.secret_key.bright_yellow()
     );
-    println!("\n  {} Store your secret key safely — it won't be shown again.", "⚠".yellow());
+    println!(
+        "\n  {} Store your secret key safely — it won't be shown again.",
+        "⚠".yellow()
+    );
     println!("{}\n", "=".repeat(60).green());
 
     Ok(())
@@ -383,7 +388,12 @@ pub async fn webhook_logs(api_url: &str, webhook_id: &str, limit: usize) -> Resu
                 DeliveryStatus::DeadLetter => "☠ dead-letter".bright_red(),
             };
 
-            println!("\n  {} {} — {}", status_str, d.id.bright_black(), d.event.bold());
+            println!(
+                "\n  {} {} — {}",
+                status_str,
+                d.id.bright_black(),
+                d.event.bold()
+            );
             println!("    Attempt: {}/5", d.attempt);
 
             if let Some(code) = d.response_code {
@@ -414,7 +424,10 @@ pub async fn retry_delivery(api_url: &str, delivery_id: &str) -> Result<()> {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{}/api/webhook-deliveries/{}/retry", api_url, delivery_id))
+        .post(format!(
+            "{}/api/webhook-deliveries/{}/retry",
+            api_url, delivery_id
+        ))
         .send()
         .await
         .context("Failed to reach registry API")?;

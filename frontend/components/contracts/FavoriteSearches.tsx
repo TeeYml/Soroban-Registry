@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, FavoriteSearch, QueryNode } from '@/lib/api';
+import { api, QueryNode } from '@/lib/api';
 import { Star, Trash2, Clock, Play, Loader2, Bookmark } from 'lucide-react';
 
 interface FavoriteSearchesProps {

@@ -295,3 +295,57 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--primary);
 }
+
+/* ── Mobile nav drawer ────────────────────────────────────── */
+
+.drawer-overlay {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ── Active nav indicator dot ─────────────────────────────── */
+
+@keyframes ping-sm {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.4); opacity: 0.5; }
+}
+
+.nav-active-dot {
+  animation: ping-sm 2.5s ease-in-out infinite;
+}
+
+/* ── Search modal entrance ────────────────────────────────── */
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.97) translateY(-8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);     }
+}
+
+.animate-modal-in {
+  animation: modal-in 0.18s ease-out forwards;
+}
+
+/* ── Animated hamburger icon ──────────────────────────────── */
+
+@keyframes spin-in {
+  from { transform: rotate(-90deg) scale(0.75); opacity: 0; }
+  to   { transform: rotate(0deg)   scale(1);    opacity: 1; }
+}
+
+.hamburger-enter {
+  animation: spin-in 0.2s ease-out forwards;
+}
+
+/* ── Sticky nav shadow transition ─────────────────────────── */
+
+.nav-scrolled {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10), 0 1px 0 var(--border);
+}
+
+/* ── Breadcrumb bar ───────────────────────────────────────── */
+
+.breadcrumb-bar {
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
