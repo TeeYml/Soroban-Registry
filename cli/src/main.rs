@@ -31,6 +31,8 @@ mod table_format;
 mod test_framework;
 mod webhook;
 mod wizard;
+mod cicd;
+mod track_deployment;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
