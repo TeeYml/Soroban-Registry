@@ -3026,3 +3026,277 @@ pub struct ReviewVoteResponse {
     pub helpful_count: i32,
     pub vote_recorded: bool,
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #487: Contract Clone/Mirror Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Request to clone an existing contract
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CloneContractRequest {
+    /// New name for the cloned contract (optional, defaults to original name + " Clone")
+    #[schema(example = "MyYieldOptimizer V2")]
+    pub name: Option<String>,
+    /// New description for the cloned contract (optional)
+    #[schema(example = "A modified version of the original yield optimizer")]
+    pub description: Option<String>,
+    /// Target network for the clone (optional, defaults to original network)
+    pub network: Option<Network>,
+    /// New contract ID/address for the clone (required)
+    #[schema(example = "C...5678")]
+    pub contract_id: String,
+    /// New wasm hash for the clone (optional, defaults to original)
+    #[schema(example = "a1b2c3d4e5f6...")]
+    pub wasm_hash: Option<String>,
+    /// Override publisher (optional, defaults to current user)
+    pub publisher_id: Option<Uuid>,
+    /// Override category (optional)
+    #[schema(example = "DeFi")]
+    pub category: Option<String>,
+    /// Override tags (optional)
+    #[schema(example = json!(["yield", "fork", "optimized"]))]
+    pub tags: Option<Vec<String>>,
+}
+
+/// Response from cloning a contract
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CloneContractResponse {
+    /// ID of the newly created clone
+    pub id: Uuid,
+    /// Contract ID (address) of the clone
+    pub contract_id: String,
+    /// Name of the cloned contract
+    pub name: String,
+    /// Link to the original contract
+    pub original_contract_id: Uuid,
+    /// Original contract name
+    pub original_contract_name: String,
+    /// Clone link (API endpoint)
+    pub clone_link: String,
+    /// Network where the clone is deployed
+    pub network: Network,
+    /// Whether the clone inherited ABI from original
+    pub inherited_abi: bool,
+    /// Creation timestamp
+    pub created_at: DateTime<Utc>,
+}
+
+/// Clone history record
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct ContractCloneHistory {
+    pub id: Uuid,
+    pub parent_contract_id: Uuid,
+    pub cloned_contract_id: Uuid,
+    pub cloned_by: Option<Uuid>,
+    pub cloned_at: DateTime<Utc>,
+    pub metadata_overrides: Option<serde_json::Value>,
+    pub network: Network,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #499: Federated Registry Protocol Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Federation protocol version
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederationProtocolVersion {
+    pub version: String,
+    pub supported_features: Vec<String>,
+}
+
+/// Federated registry information
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct FederatedRegistry {
+    pub id: Uuid,
+    pub name: String,
+    pub base_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_key: Option<String>,
+    pub is_active: bool,
+    pub federation_protocol_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_synced_at: Option<DateTime<Utc>>,
+    pub sync_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync_error: Option<String>,
+    pub contracts_count: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to register a new federated registry
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct RegisterFederatedRegistryRequest {
+    /// Name of the registry
+    #[schema(example = "Stellar Community Registry")]
+    pub name: String,
+    /// Base URL of the registry API
+    #[schema(example = "https://registry.example.com")]
+    pub base_url: String,
+    /// Public key for signature verification (optional)
+    #[schema(example = "ed25519:base64encodedkey...")]
+    pub public_key: Option<String>,
+    /// Federation protocol version (defaults to "1.0")
+    #[schema(example = "1.0")]
+    pub federation_protocol_version: Option<String>,
+}
+
+/// Response from registering a federated registry
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederatedRegistryResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub base_url: String,
+    pub is_active: bool,
+    pub federation_protocol_version: String,
+    pub registration_link: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Federation sync job status
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct FederationSyncJob {
+    pub id: Uuid,
+    pub registry_id: Uuid,
+    pub status: String,
+    pub contracts_synced: i32,
+    pub contracts_failed: i32,
+    pub duplicates_detected: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request to sync contracts from a federated registry
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SyncFederatedRegistryRequest {
+    /// Registry ID to sync from
+    pub registry_id: Uuid,
+    /// Sync only new contracts (default: false)
+    #[serde(default)]
+    pub incremental: bool,
+    /// Batch size for sync operations (default: 100)
+    #[serde(default = "default_sync_batch_size")]
+    pub batch_size: i32,
+}
+
+fn default_sync_batch_size() -> i32 {
+    100
+}
+
+/// Response from federation sync operation
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederationSyncResponse {
+    pub job_id: Uuid,
+    pub registry_id: Uuid,
+    pub registry_name: String,
+    pub status: String,
+    pub contracts_synced: i32,
+    pub contracts_failed: i32,
+    pub duplicates_detected: i32,
+    pub sync_link: String,
+    pub started_at: Option<DateTime<Utc>>,
+}
+
+/// Individual sync result record
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct FederationSyncResult {
+    pub id: Uuid,
+    pub job_id: Uuid,
+    pub source_registry_id: Uuid,
+    pub source_contract_id: String,
+    pub local_contract_id: Option<Uuid>,
+    pub sync_action: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    pub synced_at: DateTime<Utc>,
+}
+
+/// Federation discovery response
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederationDiscoveryResponse {
+    pub registries: Vec<FederatedRegistrySummary>,
+    pub total_count: i64,
+    pub discovered_at: DateTime<Utc>,
+}
+
+/// Summary of a federated registry for discovery
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederatedRegistrySummary {
+    pub id: Uuid,
+    pub name: String,
+    pub base_url: String,
+    pub contracts_count: i32,
+    pub protocol_version: String,
+    pub is_active: bool,
+}
+
+/// Duplicate detection result
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct DuplicateDetectionResult {
+    pub source_contract_id: String,
+    pub source_registry: String,
+    pub local_match: Option<ContractDuplicateMatch>,
+    pub is_duplicate: bool,
+    pub detection_method: String,
+}
+
+/// Matched duplicate contract info
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ContractDuplicateMatch {
+    pub contract_id: Uuid,
+    pub contract_address: String,
+    pub name: String,
+    pub match_confidence: f64,
+    pub match_method: String,
+}
+
+/// Federation attribution info
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederationAttribution {
+    pub source_registry_id: Uuid,
+    pub source_registry_name: String,
+    pub original_contract_id: String,
+    pub synced_at: DateTime<Utc>,
+    pub attribution_link: String,
+}
+
+/// Request to opt-in/out of federation for a contract
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederationOptRequest {
+    /// Whether to allow this contract to be federated
+    pub allow_federation: bool,
+    /// Optional list of specific registries to allow/deny
+    pub registry_filters: Option<Vec<Uuid>>,
+}
+
+/// Federation configuration
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct FederationProtocolConfig {
+    pub id: Uuid,
+    pub config_key: String,
+    pub config_value: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// List response for federated registries
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederatedRegistryListResponse {
+    pub registries: Vec<FederatedRegistry>,
+    pub total_count: i64,
+}
+
+/// Sync history response
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FederationSyncHistoryResponse {
+    pub jobs: Vec<FederationSyncJob>,
+    pub total_count: i64,
+}
