@@ -363,6 +363,84 @@ pub struct GraphResponse {
     pub edges: Vec<GraphEdge>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProtocolComplianceStatus {
+    Compliant,
+    Partial,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InteroperabilityCapabilityKind {
+    Bridge,
+    Adapter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct InteroperabilityProtocolMatch {
+    pub slug: String,
+    pub name: String,
+    pub description: String,
+    pub status: ProtocolComplianceStatus,
+    pub matched_functions: Vec<String>,
+    pub missing_functions: Vec<String>,
+    pub optional_matches: Vec<String>,
+    pub compliance_score: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct InteroperabilityCapability {
+    pub kind: InteroperabilityCapabilityKind,
+    pub label: String,
+    pub confidence: f64,
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct InteroperabilitySuggestion {
+    pub contract_id: Uuid,
+    pub contract_address: String,
+    pub contract_name: String,
+    pub network: Network,
+    pub category: Option<String>,
+    pub is_verified: bool,
+    pub score: f64,
+    pub reason: String,
+    pub shared_protocols: Vec<String>,
+    pub shared_functions: Vec<String>,
+    pub relation_types: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct InteroperabilitySummary {
+    pub protocol_matches: usize,
+    pub compatible_contracts: usize,
+    pub suggested_contracts: usize,
+    pub graph_nodes: usize,
+    pub graph_edges: usize,
+    pub bridge_signals: usize,
+    pub adapter_signals: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ContractInteroperabilityResponse {
+    pub contract_id: Uuid,
+    pub contract_address: String,
+    pub contract_name: String,
+    pub network: Network,
+    pub analyzed_at: DateTime<Utc>,
+    pub has_abi: bool,
+    pub analyzed_functions: Vec<String>,
+    pub warnings: Vec<String>,
+    pub protocols: Vec<InteroperabilityProtocolMatch>,
+    pub capabilities: Vec<InteroperabilityCapability>,
+    pub suggestions: Vec<InteroperabilitySuggestion>,
+    pub graph: GraphResponse,
+    pub summary: InteroperabilitySummary,
+}
+
 /// Request to publish a new contract
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PublishRequest {
