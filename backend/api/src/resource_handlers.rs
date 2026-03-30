@@ -41,14 +41,15 @@ mod tests {
             .expect("lazy pool")
     }
 
-    fn test_state() -> AppState {
+    async fn test_state() -> AppState {
         let registry = Registry::new_custom(Some("test".into()), None).unwrap();
         metrics::register_all(&registry).unwrap();
         let (job_engine, _rx) = soroban_batch::engine::JobEngine::new();
+        let (event_broadcaster, _) = tokio::sync::broadcast::channel(100);
         AppState {
             db: create_test_pool(),
             started_at: Instant::now(),
-            cache: Arc::new(CacheLayer::new(CacheConfig::default())),
+            cache: Arc::new(CacheLayer::new(CacheConfig::default()).await),
             registry,
             job_engine: Arc::new(job_engine),
             is_shutting_down: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -58,12 +59,14 @@ mod tests {
                 "test-secret-test-secret-test-se".to_string(),
             ))),
             contract_events: Arc::new(ContractEventHub::from_env()),
+            source_storage: Arc::new(shared::source_storage::SourceStorage::new().await.unwrap()),
+            event_broadcaster,
         }
     }
 
     #[tokio::test]
     async fn returns_forecast_payload_for_alias_route() {
-        let state = test_state();
+        let state = test_state().await;
         {
             let base = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
             let mut mgr = state.resource_mgr.write().unwrap();

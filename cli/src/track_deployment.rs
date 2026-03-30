@@ -113,20 +113,12 @@ pub async fn run(
 
     if !json {
         print_header();
-        println!(
-            "  {}   {}",
-            "Contract:".bold(),
-            contract_id.bright_black()
-        );
+        println!("  {}   {}", "Contract:".bold(), contract_id.bright_black());
         println!("  {}   {}", "Network:".bold(), network.bright_blue());
         if let Some(hash) = tx_hash {
             println!("  {} {}", "Tx Hash:".bold(), hash.bright_black());
         }
-        println!(
-            "  {}  {}s",
-            "Timeout:".bold(),
-            wait_timeout
-        );
+        println!("  {}  {}s", "Timeout:".bold(), wait_timeout);
         println!();
     }
 
@@ -140,15 +132,13 @@ pub async fn run(
 
     loop {
         attempt += 1;
-        let elapsed = Instant::now().saturating_duration_since(
-            deadline - Duration::from_secs(wait_timeout),
-        );
+        let elapsed =
+            Instant::now().saturating_duration_since(deadline - Duration::from_secs(wait_timeout));
 
         log::debug!("Poll attempt {} (elapsed: {}s)", attempt, elapsed.as_secs());
 
         // ── Check 1: registry API ────────────────────────────────────────────
-        let registry_result =
-            poll_registry(&client, api_url, contract_id, network).await;
+        let registry_result = poll_registry(&client, api_url, contract_id, network).await;
 
         // ── Check 2: on-chain via Horizon or RPC ────────────────────────────
         let onchain_result = if let Some(hash) = tx_hash {
@@ -166,19 +156,15 @@ pub async fn run(
 
         if !json {
             let dots = ".".repeat(((attempt - 1) % 3 + 1) as usize);
-            print!(
-                "\r  {} Polling{:<3}  attempt {}",
-                "⟳".cyan(),
-                dots,
-                attempt
-            );
+            print!("\r  {} Polling{:<3}  attempt {}", "⟳".cyan(), dots, attempt);
             // Flush without newline so the line updates
             use std::io::Write;
             let _ = std::io::stdout().flush();
         }
 
         if confirmed {
-            let (tx, ledger, close_time) = merge_results(registry_result.as_ref(), onchain_result.as_ref(), tx_hash);
+            let (tx, ledger, close_time) =
+                merge_results(registry_result.as_ref(), onchain_result.as_ref(), tx_hash);
 
             let status = DeploymentStatus {
                 contract_id: contract_id.to_string(),
@@ -260,9 +246,7 @@ async fn poll_registry(
                     || c["id"].as_str() == Some(contract_id)
             })
             .cloned()
-    } else if body.is_object()
-        && (body["contract_id"].is_string() || body["id"].is_string())
-    {
+    } else if body.is_object() && (body["contract_id"].is_string() || body["id"].is_string()) {
         Some(body)
     } else {
         None
@@ -383,24 +367,20 @@ fn merge_results(
     let tx = onchain
         .map(|t| t.hash.clone())
         .or_else(|| cli_tx_hash.map(str::to_string))
-        .or_else(|| {
-            registry.and_then(|r| r["tx_hash"].as_str().map(str::to_string))
-        });
+        .or_else(|| registry.and_then(|r| r["tx_hash"].as_str().map(str::to_string)));
 
     let ledger = onchain
         .map(|t| t.ledger)
         .or_else(|| registry.and_then(|r| r["ledger_sequence"].as_u64()));
 
-    let close_time = onchain
-        .map(|t| t.created_at.clone())
-        .or_else(|| {
-            registry.and_then(|r| {
-                r["deployed_at"]
-                    .as_str()
-                    .or(r["created_at"].as_str())
-                    .map(str::to_string)
-            })
-        });
+    let close_time = onchain.map(|t| t.created_at.clone()).or_else(|| {
+        registry.and_then(|r| {
+            r["deployed_at"]
+                .as_str()
+                .or(r["created_at"].as_str())
+                .map(str::to_string)
+        })
+    });
 
     (tx, ledger, close_time)
 }
@@ -421,7 +401,11 @@ fn print_success(status: &DeploymentStatus) {
         "Deployment confirmed!".green().bold()
     );
     println!();
-    println!("  {}  {}", "Contract:".bold(), status.contract_id.bright_black());
+    println!(
+        "  {}  {}",
+        "Contract:".bold(),
+        status.contract_id.bright_black()
+    );
     println!("  {}  {}", "Network:".bold(), status.network.bright_blue());
 
     if let Some(tx) = &status.tx_hash {
@@ -456,11 +440,7 @@ fn print_timeout(contract_id: &str, timeout_secs: u64) {
     );
     println!();
     println!("  {} {}", "Contract:".bold(), contract_id.bright_black());
-    println!(
-        "  {} {}s elapsed",
-        "Timeout:".bold(),
-        timeout_secs
-    );
+    println!("  {} {}s elapsed", "Timeout:".bold(), timeout_secs);
     println!();
     println!(
         "  {}: The transaction may still be pending. Re-run with a longer",

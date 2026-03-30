@@ -174,7 +174,6 @@ async fn build_dependency_tree(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::HashSet;
     use uuid::Uuid;
 

@@ -24,5 +24,10 @@ export function useTheme() {
       resolvedTheme: 'light' as const,
     };
   }
-  return context;
+
+  return {
+    theme: 'system' as Theme,
+    setTheme: () => undefined,
+    resolvedTheme: 'light' as const,
+  };
 }

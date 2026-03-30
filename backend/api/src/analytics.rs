@@ -7,6 +7,7 @@ use uuid::Uuid;
 /// This is intentionally fire-and-forget so that fetching a contract page
 /// is never blocked waiting for a write.  Any database error is logged at
 /// the WARN level but never propagated to the caller.
+#[allow(dead_code)]
 pub fn increment_view_count_async(pool: PgPool, contract_id: Uuid) {
     tokio::spawn(async move {
         let result = sqlx::query("UPDATE contracts SET view_count = view_count + 1 WHERE id = $1")

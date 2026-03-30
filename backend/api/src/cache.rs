@@ -160,9 +160,7 @@ impl CacheLayer {
         }
 
         // Put to L1 cache
-        self.abi_cache
-            .insert(contract_id.to_string(), abi)
-            .await;
+        self.abi_cache.insert(contract_id.to_string(), abi).await;
     }
 
     pub async fn invalidate_abi(&self, contract_id: &str) {
@@ -460,7 +458,8 @@ mod tests {
             max_capacity: 100,
             redis_enabled: false,
             redis_url: None,
-        }).await;
+        })
+        .await;
 
         assert!(cache.should_refresh_contract_access("contract-1").await);
         assert!(!cache.should_refresh_contract_access("contract-1").await);

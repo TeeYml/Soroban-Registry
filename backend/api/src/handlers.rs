@@ -16,12 +16,13 @@ use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use shared::{
     pagination::Cursor, AdvancedSearchRequest, AnalyticsEventType, AuditActionType,
-    ChangePublisherRequest, Contract, ContractAuditLog,
-    ContractChangelogEntry, ContractChangelogResponse, ContractGetResponse,
-    ContractDeployment, ContractInteractionResponse, ContractSearchParams, ContractSource,
-    ContractVersion,
-    CreateContractVersionRequest, CreateInteractionBatchRequest, CreateInteractionRequest,
-    FavoriteSearch, FieldOperator,
+    ChangePublisherRequest, Contract, ContractAuditLog, ContractChangelogEntry,
+    ContractChangelogResponse, ContractDeploymentHistory, ContractExportAcceptedResponse,
+    ContractExportFormat, ContractExportJobStatus, ContractExportMetadata, ContractExportRequest,
+    ContractExportStatusResponse, ContractGetResponse, ContractInteractionResponse,
+    ContractMetadataExportEnvelope, ContractMetadataExportRecord, ContractSearchParams,
+    ContractSource, ContractVersion, CreateContractVersionRequest, CreateInteractionBatchRequest,
+    CreateInteractionRequest, DeploymentHistoryQueryParams, FavoriteSearch, FieldOperator,
     GraphResponse, InteractionTimeSeriesPoint, InteractionTimeSeriesResponse,
     InteractionsListResponse, InteractionsQueryParams, Network, NetworkConfig, NetworkEndpoints,
     NetworkInfo, NetworkListResponse, NetworkStatus, PaginatedResponse, PublishRequest, Publisher,
@@ -52,8 +53,8 @@ pub struct BatchContractsQuery {
 }
 
 use crate::{
-    auth::AuthClaims,
     analytics,
+    auth::AuthClaims,
     breaking_changes::{diff_abi, has_breaking_changes, resolve_abi},
     contract_events::{ContractEventEnvelope, ContractEventVisibility},
     dependency,
@@ -84,6 +85,7 @@ fn map_query_rejection(err: QueryRejection) -> ApiError {
     )
 }
 
+#[allow(dead_code)]
 fn sort_timestamp_column(sort_by: &shared::SortBy) -> Option<&'static str> {
     match sort_by {
         shared::SortBy::CreatedAt => Some("c.created_at"),
@@ -404,13 +406,7 @@ pub async fn run_network_catalog_refresh(state: AppState) {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-    PartialEq,
-    sqlx::Type,
-    utoipa::ToSchema,
+    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, sqlx::Type, utoipa::ToSchema,
 )]
 #[sqlx(type_name = "contract_audit_event_type", rename_all = "snake_case")]
 #[allow(dead_code)]
@@ -536,7 +532,7 @@ fn parse_batch_fields(raw_fields: Option<&str>) -> Option<HashSet<String>> {
 
 fn contract_to_filtered_value(contract: &Contract, fields: Option<&HashSet<String>>) -> Value {
     if fields.is_none() {
-        return serde_json::to_value(contract).unwrap_or_else(|_| Value::Null);
+        return serde_json::to_value(contract).unwrap_or(Value::Null);
     }
 
     let Some(source) = serde_json::to_value(contract)
@@ -1249,9 +1245,7 @@ pub async fn list_contracts(
         shared::SortBy::UpdatedAt => qb.push("c.updated_at "),
         shared::SortBy::VerifiedAt => qb.push("c.verified_at "),
         shared::SortBy::LastAccessedAt => qb.push("c.last_accessed_at "),
-        shared::SortBy::Popularity | shared::SortBy::Interactions => {
-            qb.push("COUNT(ci.id) ")
-        }
+        shared::SortBy::Popularity | shared::SortBy::Interactions => qb.push("COUNT(ci.id) "),
         _ => qb.push("c.created_at "),
     };
     qb.push(direction);
@@ -1534,7 +1528,7 @@ fn contract_export_response(
 fn apply_contract_export_filters<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     filters: &'a ContractSearchParams,
-    claims: Option<&'a shared::AuthClaims>,
+    claims: Option<&'a crate::auth::AuthClaims>,
 ) {
     query.push(" FROM contracts c JOIN publishers p ON p.id = c.publisher_id WHERE (c.visibility = 'public'");
     if let Some(claims) = claims {
@@ -1608,52 +1602,52 @@ fn apply_contract_export_filters<'a>(
         let search_pattern = format!("%{}%", query_text.to_ascii_lowercase());
         query.push(" AND (");
         query.push("c.search_vector @@ plainto_tsquery('english', ");
-        query.push_bind(query_text);
+        query.push_bind(query_text.to_string());
         query.push(") OR lower(c.name) LIKE ");
-        query.push_bind(&search_pattern);
+        query.push_bind(search_pattern.clone());
         query.push(" OR lower(coalesce(c.description, '')) LIKE ");
-        query.push_bind(&search_pattern);
+        query.push_bind(search_pattern.clone());
         query.push(" OR lower(c.contract_id) LIKE ");
-        query.push_bind(&search_pattern);
+        query.push_bind(search_pattern);
         query.push(")");
     }
 
-    if let Some(created_from) = filters.created_from.clone() {
+    if let Some(created_from) = filters.created_from {
         query.push(" AND c.created_at >= ");
         query.push_bind(created_from);
     }
 
-    if let Some(created_to) = filters.created_to.clone() {
+    if let Some(created_to) = filters.created_to {
         query.push(" AND c.created_at <= ");
         query.push_bind(created_to);
     }
 
-    if let Some(updated_from) = filters.updated_from.clone() {
+    if let Some(updated_from) = filters.updated_from {
         query.push(" AND c.updated_at >= ");
         query.push_bind(updated_from);
     }
 
-    if let Some(updated_to) = filters.updated_to.clone() {
+    if let Some(updated_to) = filters.updated_to {
         query.push(" AND c.updated_at <= ");
         query.push_bind(updated_to);
     }
 
-    if let Some(verified_from) = filters.verified_from.clone() {
+    if let Some(verified_from) = filters.verified_from {
         query.push(" AND c.verified_at >= ");
         query.push_bind(verified_from);
     }
 
-    if let Some(verified_to) = filters.verified_to.clone() {
+    if let Some(verified_to) = filters.verified_to {
         query.push(" AND c.verified_at <= ");
         query.push_bind(verified_to);
     }
 
-    if let Some(last_accessed_from) = filters.last_accessed_from.clone() {
+    if let Some(last_accessed_from) = filters.last_accessed_from {
         query.push(" AND c.last_accessed_at >= ");
         query.push_bind(last_accessed_from);
     }
 
-    if let Some(last_accessed_to) = filters.last_accessed_to.clone() {
+    if let Some(last_accessed_to) = filters.last_accessed_to {
         query.push(" AND c.last_accessed_at <= ");
         query.push_bind(last_accessed_to);
     }
@@ -1662,7 +1656,7 @@ fn apply_contract_export_filters<'a>(
 async fn count_contract_export_rows(
     state: &AppState,
     filters: &ContractSearchParams,
-    claims: Option<&shared::AuthClaims>,
+    claims: Option<&crate::auth::AuthClaims>,
 ) -> ApiResult<i64> {
     let mut query = QueryBuilder::<Postgres>::new("SELECT COUNT(*)");
     apply_contract_export_filters(&mut query, filters, claims);
@@ -1676,7 +1670,7 @@ async fn count_contract_export_rows(
 async fn fetch_contract_export_rows(
     state: &AppState,
     filters: &ContractSearchParams,
-    claims: Option<&shared::AuthClaims>,
+    claims: Option<&crate::auth::AuthClaims>,
 ) -> ApiResult<Vec<ContractMetadataExportRecord>> {
     let sort_by = filters.sort_by.clone().unwrap_or(shared::SortBy::CreatedAt);
     let sort_order = filters
@@ -1702,13 +1696,21 @@ async fn fetch_contract_export_rows(
 
     query.push(" ORDER BY ");
     match sort_by {
-        shared::SortBy::UpdatedAt => query.push("c.updated_at "),
-        shared::SortBy::VerifiedAt => query.push("c.verified_at "),
-        shared::SortBy::LastAccessedAt => query.push("c.last_accessed_at "),
-        shared::SortBy::Popularity | shared::SortBy::Interactions => {
-            query.push("c.last_accessed_at ")
+        shared::SortBy::UpdatedAt => {
+            query.push("c.updated_at ");
         }
-        shared::SortBy::Deployments => query.push("c.deployment_count "),
+        shared::SortBy::VerifiedAt => {
+            query.push("c.verified_at ");
+        }
+        shared::SortBy::LastAccessedAt => {
+            query.push("c.last_accessed_at ");
+        }
+        shared::SortBy::Popularity | shared::SortBy::Interactions => {
+            query.push("c.last_accessed_at ");
+        }
+        shared::SortBy::Deployments => {
+            query.push("c.deployment_count ");
+        }
         shared::SortBy::Relevance => {
             if let Some(query_text) = filters
                 .query
@@ -1716,13 +1718,15 @@ async fn fetch_contract_export_rows(
                 .filter(|value| !value.trim().is_empty())
             {
                 query.push("ts_rank_cd(c.search_vector, plainto_tsquery('english', ");
-                query.push_bind(query_text);
+                query.push_bind(query_text.to_string());
                 query.push(")) ");
             } else {
                 query.push("c.created_at ");
             }
         }
-        shared::SortBy::CreatedAt => query.push("c.created_at "),
+        shared::SortBy::CreatedAt => {
+            query.push("c.created_at ");
+        }
     };
     query.push(direction);
     query.push(" NULLS LAST, c.id ");
@@ -1739,7 +1743,7 @@ async fn generate_contract_export_payload(
     state: &AppState,
     filters: &ContractSearchParams,
     format: &ContractExportFormat,
-    claims: Option<&shared::AuthClaims>,
+    claims: Option<&crate::auth::AuthClaims>,
     async_export: bool,
 ) -> ApiResult<(String, i64)> {
     let contracts = fetch_contract_export_rows(state, filters, claims).await?;
@@ -1780,7 +1784,7 @@ async fn persist_contract_export_artifact(path: &StdPath, content: String) -> Ap
 )]
 pub async fn export_contract_metadata(
     State(state): State<AppState>,
-    claims: Option<shared::AuthClaims>,
+    claims: Option<crate::auth::AuthClaims>,
     ValidatedJson(req): ValidatedJson<ContractExportRequest>,
 ) -> ApiResult<Response> {
     let filters = sanitized_export_filters(req.filters.clone());
@@ -2188,14 +2192,13 @@ pub async fn get_specific_contract_version(
 ) -> ApiResult<Json<ContractVersion>> {
     let (contract_uuid, _) = fetch_contract_identity(&state, &id).await?;
 
-    let version_row: Option<ContractVersion> = sqlx::query_as(
-        "SELECT * FROM contract_versions WHERE contract_id = $1 AND version = $2",
-    )
-    .bind(contract_uuid)
-    .bind(&version)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| db_internal_error("get specific contract version", err))?;
+    let version_row: Option<ContractVersion> =
+        sqlx::query_as("SELECT * FROM contract_versions WHERE contract_id = $1 AND version = $2")
+            .bind(contract_uuid)
+            .bind(&version)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| db_internal_error("get specific contract version", err))?;
 
     version_row.map(Json).ok_or_else(|| {
         ApiError::not_found(
@@ -2238,14 +2241,13 @@ pub async fn compare_contract_versions(
 ) -> ApiResult<Json<shared::VersionCompareResponse>> {
     let (contract_uuid, _) = fetch_contract_identity(&state, &id).await?;
 
-    let from_row: Option<ContractVersion> = sqlx::query_as(
-        "SELECT * FROM contract_versions WHERE contract_id = $1 AND version = $2",
-    )
-    .bind(contract_uuid)
-    .bind(&params.from)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| db_internal_error("fetch from-version for compare", err))?;
+    let from_row: Option<ContractVersion> =
+        sqlx::query_as("SELECT * FROM contract_versions WHERE contract_id = $1 AND version = $2")
+            .bind(contract_uuid)
+            .bind(&params.from)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| db_internal_error("fetch from-version for compare", err))?;
 
     let from_row = from_row.ok_or_else(|| {
         ApiError::not_found(
@@ -2254,14 +2256,13 @@ pub async fn compare_contract_versions(
         )
     })?;
 
-    let to_row: Option<ContractVersion> = sqlx::query_as(
-        "SELECT * FROM contract_versions WHERE contract_id = $1 AND version = $2",
-    )
-    .bind(contract_uuid)
-    .bind(&params.to)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| db_internal_error("fetch to-version for compare", err))?;
+    let to_row: Option<ContractVersion> =
+        sqlx::query_as("SELECT * FROM contract_versions WHERE contract_id = $1 AND version = $2")
+            .bind(contract_uuid)
+            .bind(&params.to)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| db_internal_error("fetch to-version for compare", err))?;
 
     let to_row = to_row.ok_or_else(|| {
         ApiError::not_found(
@@ -2349,14 +2350,13 @@ pub async fn revert_contract_version(
     let (contract_uuid, contract_id) = fetch_contract_identity(&state, &id).await?;
 
     // Fetch the version we are reverting to.
-    let target: Option<ContractVersion> = sqlx::query_as(
-        "SELECT * FROM contract_versions WHERE contract_id = $1 AND version = $2",
-    )
-    .bind(contract_uuid)
-    .bind(&target_version)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| db_internal_error("fetch target version for revert", err))?;
+    let target: Option<ContractVersion> =
+        sqlx::query_as("SELECT * FROM contract_versions WHERE contract_id = $1 AND version = $2")
+            .bind(contract_uuid)
+            .bind(&target_version)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| db_internal_error("fetch target version for revert", err))?;
 
     let target = target.ok_or_else(|| {
         ApiError::not_found(
@@ -2391,9 +2391,9 @@ pub async fn revert_contract_version(
         }
     };
 
-    let change_notes = req.change_notes.unwrap_or_else(|| {
-        format!("Reverted to version {}", target_version)
-    });
+    let change_notes = req
+        .change_notes
+        .unwrap_or_else(|| format!("Reverted to version {}", target_version));
 
     let mut tx = state
         .db
@@ -3186,7 +3186,11 @@ pub async fn create_contract_version(
     )
     .await
     {
-        tracing::error!("Failed to store differential patch for version {}: {}", req.version, e);
+        tracing::error!(
+            "Failed to store differential patch for version {}: {}",
+            req.version,
+            e
+        );
     }
 
     // Post-commit dependency analysis
@@ -3810,6 +3814,7 @@ pub async fn get_trust_score() -> impl IntoResponse {
     planned_not_implemented_response()
 }
 
+#[allow(dead_code)]
 #[utoipa::path(
     get,
     path = "/api/contracts/{id}/dependencies",
@@ -5051,7 +5056,15 @@ pub async fn get_contract_deployments(
         // Try resolving by Stellar ID
         let uuid = dependency::resolve_contract_id(&state.db, &id)
             .await
-            .map_err(|err| ApiError::not_found(format!("Contract {} not found: {}", id, err)))?;
+            .map_err(|err| {
+                ApiError::not_found(
+                    "CONTRACT_NOT_FOUND",
+                    format!("Contract {} not found: {}", id, err),
+                )
+            })?
+            .ok_or_else(|| {
+                ApiError::not_found("CONTRACT_NOT_FOUND", format!("Contract {} not found", id))
+            })?;
 
         let logical_id: Option<Uuid> =
             sqlx::query_scalar("SELECT logical_id FROM contracts WHERE id = $1")
@@ -5072,7 +5085,10 @@ pub async fn get_contract_deployments(
     };
 
     if target_uuids.is_empty() {
-        return Err(ApiError::not_found(format!("Contract {} not found", id)));
+        return Err(ApiError::not_found(
+            "CONTRACT_NOT_FOUND",
+            format!("Contract {} not found", id),
+        ));
     }
 
     // Pagination info
@@ -5190,6 +5206,7 @@ pub async fn deploy_green() -> impl IntoResponse {
     planned_not_implemented_response()
 }
 
+#[allow(dead_code)]
 #[utoipa::path(
     get,
     path = "/api/contracts/{id}/performance",
@@ -5597,7 +5614,9 @@ mod tests {
             .unwrap();
         let registry = Registry::new();
         let (job_engine, _rx) = soroban_batch::engine::JobEngine::new();
-        let state = AppState::new(db, registry, Arc::new(job_engine), is_shutting_down);
+        let state = AppState::new(db, registry, Arc::new(job_engine), is_shutting_down)
+            .await
+            .unwrap();
 
         let (status, json) = health_check(State(state)).await;
 
@@ -5665,6 +5684,10 @@ mod tests {
             is_maintenance: false,
             logical_id: None,
             network_configs: None,
+            organization_id: None,
+            relevance_score: None,
+            visibility: shared::VisibilityType::Public,
+            current_version: None,
         };
 
         assert_eq!(
@@ -5843,6 +5866,7 @@ mod tests {
 // ────────────────────────────────────────────────────────────────────────────
 
 /// Advanced contract search using a recursive Query DSL
+#[allow(dead_code)]
 #[utoipa::path(
     post,
     path = "/api/contracts/search",
@@ -5934,6 +5958,7 @@ pub async fn advanced_search_contracts(
     Ok(Json(PaginatedResponse::new(contracts, total, page, limit)))
 }
 
+#[allow(dead_code)]
 fn build_where_clause<'a>(
     builder: &mut sqlx::QueryBuilder<'a, sqlx::Postgres>,
     node: &'a QueryNode,
@@ -5975,6 +6000,7 @@ fn build_where_clause<'a>(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn apply_condition<'a>(
     builder: &mut sqlx::QueryBuilder<'a, sqlx::Postgres>,
     cond: &'a QueryCondition,

@@ -1,7 +1,7 @@
 # ==========================================
 # Stage 1: Rust Builder
 # ==========================================
-FROM rust:stable-slim AS rust-builder
+FROM rust:slim AS rust-builder
 WORKDIR /app
 
 # Install dependencies required for building Rust on Debian

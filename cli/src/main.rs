@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 
+mod analyze;
 mod backup;
 mod batch_register;
 mod batch_verify;
@@ -29,6 +30,7 @@ mod release_notes;
 mod sla;
 mod table_format;
 mod test_framework;
+mod track_deployment;
 mod webhook;
 mod wizard;
 mod shell;
@@ -527,6 +529,24 @@ pub enum Commands {
         /// Output results as machine-readable JSON
         #[arg(long)]
         json: bool,
+    },
+
+    /// Run advanced analysis on a deployed contract (#530)
+    Analyze {
+        /// On-chain contract ID to analyse
+        contract_id: String,
+
+        /// Stellar network (mainnet | testnet | futurenet)
+        #[arg(long, default_value = "testnet")]
+        network: String,
+
+        /// Report format: text (default), json, yaml
+        #[arg(long, default_value = "text")]
+        report_format: String,
+
+        /// Write the report to a file instead of stdout
+        #[arg(long, short = 'o')]
+        output: Option<String>,
     },
 }
 
@@ -1915,6 +1935,29 @@ pub async fn dispatch_command(cli: Cli, network: commands::Network, cfg_network:
                 network::status(json).await?;
             }
         },
+
+        // ── Advanced contract analysis (issue #530) ─────────────────────────
+        Commands::Analyze {
+            contract_id,
+            network: net_str,
+            report_format,
+            output,
+        } => {
+            log::debug!(
+                "Command: analyze | contract_id={} network={} format={}",
+                contract_id,
+                net_str,
+                report_format
+            );
+            analyze::run(
+                &cli.api_url,
+                &contract_id,
+                &net_str,
+                &report_format,
+                output.as_deref(),
+            )
+            .await?;
+        }
 
         // ── Bulk contract registration (issue #525) ──────────────────────────
         Commands::BatchRegister {

@@ -45,7 +45,10 @@ pub fn incident_routes() -> Router<AppState> {
             get(incident_handlers::get_advisory),
         )
         // Report
-        .route("/api/security/report", get(incident_handlers::get_security_report))
+        .route(
+            "/api/security/report",
+            get(incident_handlers::get_security_report),
+        )
         // Contract-scoped shortcut
         .route(
             "/api/contracts/:id/security-incidents",

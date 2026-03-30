@@ -3409,3 +3409,394 @@ pub struct FederationSyncHistoryResponse {
     pub jobs: Vec<FederationSyncJob>,
     pub total_count: i64,
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY SCANNING TYPES (#498)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Security scanner configuration
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct SecurityScanner {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub scanner_type: String,
+    pub api_endpoint: Option<String>,
+    pub is_active: bool,
+    pub configuration: serde_json::Value,
+    pub timeout_seconds: i32,
+    pub max_concurrent_scans: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Security scan status
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema, PartialEq)]
+#[sqlx(type_name = "scan_status_type", rename_all = "snake_case")]
+pub enum ScanStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+}
+
+/// Security issue severity
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema, PartialEq, PartialOrd)]
+#[sqlx(type_name = "issue_severity_type", rename_all = "lowercase")]
+pub enum IssueSeverity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+/// Security issue status
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema, PartialEq)]
+#[sqlx(type_name = "issue_status_type", rename_all = "snake_case")]
+pub enum IssueStatus {
+    Open,
+    Acknowledged,
+    Resolved,
+    FalsePositive,
+}
+
+/// Security scan result
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct SecurityScan {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub contract_version_id: Option<Uuid>,
+    pub scanner_id: Option<Uuid>,
+    pub status: ScanStatus,
+    pub scan_type: String,
+    pub triggered_by: Option<Uuid>,
+    pub triggered_by_event: Option<String>,
+    pub total_issues: i32,
+    pub critical_issues: i32,
+    pub high_issues: i32,
+    pub medium_issues: i32,
+    pub low_issues: i32,
+    pub scan_duration_ms: Option<i32>,
+    pub scanner_version: Option<String>,
+    pub scan_parameters: Option<serde_json::Value>,
+    pub scan_result_raw: Option<serde_json::Value>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Security issue found during a scan
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct SecurityIssue {
+    pub id: Uuid,
+    pub scan_id: Uuid,
+    pub contract_id: Uuid,
+    pub contract_version_id: Option<Uuid>,
+    pub title: String,
+    pub description: String,
+    pub severity: IssueSeverity,
+    pub status: IssueStatus,
+    pub category: Option<String>,
+    pub cwe_id: Option<String>,
+    pub cve_id: Option<String>,
+    pub source_file: Option<String>,
+    pub source_line_start: Option<i32>,
+    pub source_line_end: Option<i32>,
+    pub function_name: Option<String>,
+    pub code_snippet: Option<String>,
+    pub remediation: Option<String>,
+    pub remediation_code_example: Option<String>,
+    pub references: Option<Vec<String>>,
+    pub external_issue_id: Option<String>,
+    pub is_false_positive: bool,
+    pub false_positive_reason: Option<String>,
+    pub resolved_by: Option<Uuid>,
+    pub resolved_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Security score history for version tracking
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct SecurityScoreHistory {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub contract_version_id: Uuid,
+    pub overall_score: i32,
+    pub score_breakdown: Option<serde_json::Value>,
+    pub critical_count: i32,
+    pub high_count: i32,
+    pub medium_count: i32,
+    pub low_count: i32,
+    pub scan_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request to trigger a security scan
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TriggerSecurityScanRequest {
+    pub contract_id: Uuid,
+    pub version: Option<String>,
+    pub scanner_ids: Option<Vec<Uuid>>,
+    pub scan_type: Option<String>,
+}
+
+/// Request to create/update a security scanner configuration
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CreateSecurityScannerRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub scanner_type: String,
+    pub api_endpoint: Option<String>,
+    pub api_key: Option<String>,
+    pub configuration: Option<serde_json::Value>,
+    pub timeout_seconds: Option<i32>,
+}
+
+/// Request to update security issue status
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateSecurityIssueRequest {
+    pub status: IssueStatus,
+    pub notes: Option<String>,
+}
+
+/// Security scan summary for a contract
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ContractSecuritySummary {
+    pub contract_id: Uuid,
+    pub contract_name: String,
+    pub latest_scan: Option<SecurityScanSummary>,
+    pub total_scans: i64,
+    pub open_issues: i64,
+    pub critical_open: i64,
+    pub high_open: i64,
+    pub security_score: Option<i32>,
+}
+
+/// Summary of a single security scan
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SecurityScanSummary {
+    pub id: Uuid,
+    pub status: ScanStatus,
+    pub scan_type: String,
+    pub total_issues: i32,
+    pub critical_issues: i32,
+    pub high_issues: i32,
+    pub medium_issues: i32,
+    pub low_issues: i32,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// Security scan history response
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SecurityScanHistoryResponse {
+    pub scans: Vec<SecurityScanSummary>,
+    pub total_count: i64,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOTIFICATION/SUBSCRIPTION TYPES (#493)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Notification type
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema, PartialEq)]
+#[sqlx(type_name = "notification_type", rename_all = "snake_case")]
+pub enum NotificationType {
+    NewVersion,
+    VerificationStatus,
+    SecurityIssue,
+    SecurityScanCompleted,
+    BreakingChange,
+    Deprecation,
+    Maintenance,
+    CompatibilityIssue,
+}
+
+/// Notification channel
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema, PartialEq)]
+#[sqlx(type_name = "notification_channel", rename_all = "snake_case")]
+pub enum NotificationChannel {
+    Email,
+    Webhook,
+    Push,
+    InApp,
+}
+
+/// Notification frequency
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema, PartialEq)]
+#[sqlx(type_name = "notification_frequency", rename_all = "snake_case")]
+pub enum NotificationFrequency {
+    Realtime,
+    DailyDigest,
+    WeeklyDigest,
+}
+
+/// Subscription status
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema, PartialEq)]
+#[sqlx(type_name = "subscription_status", rename_all = "lowercase")]
+pub enum SubscriptionStatus {
+    Active,
+    Paused,
+    Unsubscribed,
+}
+
+/// Contract subscription
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct ContractSubscription {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub contract_id: Uuid,
+    pub status: SubscriptionStatus,
+    pub notification_types: Vec<NotificationType>,
+    pub channels: Vec<NotificationChannel>,
+    pub frequency: NotificationFrequency,
+    pub min_severity: Option<IssueSeverity>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to subscribe to a contract
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SubscribeRequest {
+    pub contract_id: Uuid,
+    pub notification_types: Option<Vec<NotificationType>>,
+    pub channels: Option<Vec<NotificationChannel>>,
+    pub frequency: Option<NotificationFrequency>,
+    pub min_severity: Option<IssueSeverity>,
+}
+
+/// Request to update subscription preferences
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateSubscriptionRequest {
+    pub status: Option<SubscriptionStatus>,
+    pub notification_types: Option<Vec<NotificationType>>,
+    pub channels: Option<Vec<NotificationChannel>>,
+    pub frequency: Option<NotificationFrequency>,
+    pub min_severity: Option<IssueSeverity>,
+}
+
+/// User notification preferences
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct UserNotificationPreferences {
+    pub id: Uuid,
+    pub publisher_id: Uuid,
+    pub notification_frequency: NotificationFrequency,
+    pub notification_channels: Vec<NotificationChannel>,
+    pub email_notifications_enabled: bool,
+    pub webhook_url: Option<String>,
+    pub quiet_hours_start: Option<String>,
+    pub quiet_hours_end: Option<String>,
+    pub timezone: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to update user notification preferences
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateUserNotificationPreferencesRequest {
+    pub notification_frequency: Option<NotificationFrequency>,
+    pub notification_channels: Option<Vec<NotificationChannel>>,
+    pub email_notifications_enabled: Option<bool>,
+    pub webhook_url: Option<String>,
+    pub webhook_secret: Option<String>,
+    pub quiet_hours_start: Option<String>,
+    pub quiet_hours_end: Option<String>,
+    pub timezone: Option<String>,
+}
+
+/// Webhook configuration
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct WebhookConfiguration {
+    pub id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    pub name: String,
+    pub url: String,
+    pub notification_types: Vec<NotificationType>,
+    pub is_active: bool,
+    pub verify_ssl: bool,
+    pub custom_headers: Option<serde_json::Value>,
+    pub rate_limit_per_minute: Option<i32>,
+    pub total_deliveries: i32,
+    pub failed_deliveries: i32,
+    pub last_delivery_at: Option<DateTime<Utc>>,
+    pub last_success_at: Option<DateTime<Utc>>,
+    pub last_failure_at: Option<DateTime<Utc>>,
+    pub consecutive_failures: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to create a webhook
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CreateWebhookRequest {
+    pub name: String,
+    pub url: String,
+    pub notification_types: Vec<NotificationType>,
+    pub secret: Option<String>,
+    pub verify_ssl: Option<bool>,
+    pub custom_headers: Option<serde_json::Value>,
+}
+
+/// Notification queue item
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct NotificationQueueItem {
+    pub id: Uuid,
+    pub subscription_id: Uuid,
+    pub notification_type: NotificationType,
+    pub title: String,
+    pub message: String,
+    pub contract_id: Uuid,
+    pub contract_version_id: Option<Uuid>,
+    pub security_issue_id: Option<Uuid>,
+    pub metadata: Option<serde_json::Value>,
+    pub channels: Vec<NotificationChannel>,
+    pub status: String,
+    pub priority: i32,
+    pub scheduled_at: DateTime<Utc>,
+    pub sent_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// User's subscriptions list response
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UserSubscriptionsResponse {
+    pub subscriptions: Vec<ContractSubscriptionSummary>,
+    pub total_count: i64,
+}
+
+/// Summary of a contract subscription
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ContractSubscriptionSummary {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub contract_name: String,
+    pub contract_slug: Option<String>,
+    pub status: SubscriptionStatus,
+    pub notification_types: Vec<NotificationType>,
+    pub channels: Vec<NotificationChannel>,
+    pub frequency: NotificationFrequency,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Notification statistics
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct NotificationStatistics {
+    pub id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub contract_id: Option<Uuid>,
+    pub period_start: chrono::NaiveDate,
+    pub period_end: chrono::NaiveDate,
+    pub new_version_count: i32,
+    pub verification_status_count: i32,
+    pub security_issue_count: i32,
+    pub security_scan_completed_count: i32,
+    pub breaking_change_count: i32,
+    pub deprecation_count: i32,
+    pub maintenance_count: i32,
+    pub compatibility_issue_count: i32,
+    pub total_sent: i32,
+    pub total_delivered: i32,
+    pub total_failed: i32,
+}

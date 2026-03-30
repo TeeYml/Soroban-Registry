@@ -1,18 +1,3 @@
-mod aggregation;
-mod analytics;
-mod audit_handlers;
-mod audit_routes;
-mod benchmark_engine;
-mod benchmark_handlers;
-mod benchmark_routes;
-mod checklist;
-mod detector;
-mod error;
-mod handlers;
-mod incident_handlers;
-mod incident_routes;
-mod models;
-mod rate_limit;
 #![warn(unused_imports)]
 
 mod ab_test_handlers;
@@ -44,6 +29,8 @@ mod health;
 pub mod health_monitor;
 #[cfg(test)]
 mod health_tests;
+mod incident_handlers;
+mod incident_routes;
 mod metrics;
 mod metrics_handler;
 mod migration_handlers;
@@ -57,13 +44,12 @@ mod org_handlers;
 mod patch_handlers;
 mod performance_handlers;
 mod rate_limit;
+mod recommendation_handlers;
 mod release_notes_handlers;
 mod release_notes_routes;
 pub mod request_tracing;
 mod resource_handlers;
 mod resource_tracking;
-mod gas_estimation_handlers;
-mod recommendation_handlers;
 mod routes;
 pub mod security_log;
 pub mod signing_handlers;

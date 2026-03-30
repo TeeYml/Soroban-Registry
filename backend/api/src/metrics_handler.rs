@@ -36,14 +36,15 @@ mod tests {
     use std::sync::{Arc, RwLock};
     use std::time::Instant;
 
-    fn test_state() -> AppState {
+    async fn test_state() -> AppState {
         let registry = Registry::new_custom(Some("test".into()), None).unwrap();
         metrics::register_all(&registry).unwrap();
         let (job_engine, _rx) = soroban_batch::engine::JobEngine::new();
+        let (event_broadcaster, _) = tokio::sync::broadcast::channel(100);
         AppState {
             db: create_test_pool(),
             started_at: Instant::now(),
-            cache: Arc::new(CacheLayer::new(CacheConfig::default())),
+            cache: Arc::new(CacheLayer::new(CacheConfig::default()).await),
             registry,
             job_engine: Arc::new(job_engine),
             is_shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -53,6 +54,8 @@ mod tests {
             ))),
             resource_mgr: Arc::new(RwLock::new(crate::resource_tracking::ResourceManager::new())),
             contract_events: Arc::new(ContractEventHub::from_env()),
+            source_storage: Arc::new(shared::source_storage::SourceStorage::new().await.unwrap()),
+            event_broadcaster,
         }
     }
 
@@ -65,7 +68,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_metrics_endpoint_returns_200() {
-        let state = test_state();
+        let state = test_state().await;
         let resp = metrics_endpoint(State(state)).await.into_response();
 
         assert_eq!(resp.status(), StatusCode::OK);
@@ -80,7 +83,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_metrics_endpoint_contains_metric_families() {
-        let state = test_state();
+        let state = test_state().await;
         metrics::CONTRACTS_PUBLISHED.inc();
         metrics::observe_http("GET", "/health", 200, 0.001);
 

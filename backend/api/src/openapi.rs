@@ -62,13 +62,6 @@ use utoipa::OpenApi;
         deprecation_handlers::get_deprecation_info,
         deprecation_handlers::deprecate_contract,
         metrics_handler::metrics_endpoint,
-        // Review system
-        handlers::reviews::get_reviews,
-        handlers::reviews::create_review,
-        handlers::reviews::vote_review,
-        handlers::reviews::flag_review,
-        handlers::reviews::moderate_review,
-        handlers::reviews::get_rating_stats,
     ),
     components(
         schemas(

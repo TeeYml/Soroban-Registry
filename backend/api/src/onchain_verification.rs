@@ -584,6 +584,12 @@ mod tests {
             is_maintenance: false,
             logical_id: None,
             network_configs: None,
+            verified_at: None,
+            last_accessed_at: None,
+            organization_id: None,
+            relevance_score: None,
+            visibility: shared::VisibilityType::Public,
+            current_version: None,
         };
 
         assert_eq!(

@@ -19,6 +19,13 @@ export function useRealtime() {
       markAsRead: () => {},
     };
   }
-  
-  return context;
+
+  return {
+    isConnected: false,
+    unreadCount: 0,
+    notifications: [],
+    subscribe: () => () => undefined,
+    clearNotifications: () => undefined,
+    markAsRead: () => undefined,
+  };
 }

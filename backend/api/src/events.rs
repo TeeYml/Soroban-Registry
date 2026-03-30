@@ -1,6 +1,7 @@
 use crate::state::{AppState, RealtimeEvent};
 use chrono::Utc;
 
+#[allow(dead_code)]
 pub fn emit_contract_deployment(
     state: &AppState,
     contract_id: String,
@@ -19,6 +20,7 @@ pub fn emit_contract_deployment(
     let _ = state.event_broadcaster.send(event);
 }
 
+#[allow(dead_code)]
 pub fn emit_contract_update(
     state: &AppState,
     contract_id: String,
