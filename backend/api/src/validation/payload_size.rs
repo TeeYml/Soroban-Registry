@@ -77,7 +77,7 @@ pub async fn payload_size_validation_middleware(
                         "max_size_mb": max_mb,
                         "max_size_bytes": max_bytes,
                         "provided_size_bytes": size,
-                        "correlation_id": request_id
+                        "correlation_id": crate::request_tracing::get_or_create_request_id(&req)
                     }))
                     .into_response());
                 }

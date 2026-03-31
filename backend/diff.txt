@@ -1,0 +1,433 @@
+﻿diff --git a/backend/Cargo.toml b/backend/Cargo.toml
+index 7fed5f1..aa27bfa 100644
+--- a/backend/Cargo.toml
++++ b/backend/Cargo.toml
+@@ -14,6 +14,8 @@ repository = "https://github.com/ALIPHATICHYD/Soroban-Registry"
+ axum = "0.7"
+ tower = "0.4"
+ tower-http = { version = "0.5", features = ["cors", "trace"] }
++async-graphql = { version = "7.0", features = ["chrono", "uuid", "dataloader"] }
++async-graphql-axum = "7.0"
+ 
+ # Database
+ sqlx = { version = "0.8", features = [
+diff --git a/backend/api/Cargo.toml b/backend/api/Cargo.toml
+index 845d588..c87edd3 100644
+--- a/backend/api/Cargo.toml
++++ b/backend/api/Cargo.toml
+@@ -61,6 +61,8 @@ rust_decimal = { workspace = true }
+ redis = { version = "0.25", features = ["tokio-rustls-comp", "json", "connection-manager", "tokio-comp"] }
+ utoipa = { workspace = true }
+ utoipa-swagger-ui = { workspace = true }
++async-graphql = { workspace = true }
++async-graphql-axum = { workspace = true }
+ futures-util = "0.3"
+ stellar-strkey = "0.0.16"
+ stellar-xdr = { version = "26.0.0", features = ["curr", "std", "base64"] }
+diff --git a/backend/api/src/auth.rs b/backend/api/src/auth.rs
+index ce64de6..48ba8e7 100644
+--- a/backend/api/src/auth.rs
++++ b/backend/api/src/auth.rs
+@@ -1,4 +1,4 @@
+-use axum::{extract::Request, http::header, middleware::Next, response::Response};
++use axum::{extract::Request, http::header, http::StatusCode, middleware::Next, response::Response};
+ use chrono::{Duration, Utc};
+ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+ use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+diff --git a/backend/api/src/cache.rs b/backend/api/src/cache.rs
+index a4ac52e..bfaa1c2 100644
+--- a/backend/api/src/cache.rs
++++ b/backend/api/src/cache.rs
+@@ -63,6 +63,7 @@ pub struct CacheLayer {
+     pub generic_cache: MokaCache<String, String>,
+     pub contract_access_cache: MokaCache<String, bool>,
+     config: CacheConfig,
++    pub redis_cm: Option<ConnectionManager>,
+ }
+ 
+ impl CacheLayer {
+@@ -94,12 +95,35 @@ impl CacheLayer {
+             .time_to_live(Duration::from_secs(60))
+             .build();
+ 
++        let redis_cm = if config.redis_enabled {
++            if let Some(url) = &config.redis_url {
++                match redis::Client::open(url.as_str()) {
++                    Ok(client) => match client.get_connection_manager().await {
++                        Ok(cm) => Some(cm),
++                        Err(e) => {
++                            tracing::error!("Failed to get Redis connection manager: {}", e);
++                            None
++                        }
++                    },
++                    Err(e) => {
++                        tracing::error!("Failed to open Redis client: {}", e);
++                        None
++                    }
++                }
++            } else {
++                None
++            }
++        } else {
++            None
++        };
++
+         Self {
+             abi_cache,
+             verification_cache,
+             generic_cache,
+             contract_access_cache,
+             config,
++            redis_cm,
+         }
+     }
+ 
+diff --git a/backend/api/src/contract_events.rs b/backend/api/src/contract_events.rs
+index 9ffa785..cdf9c65 100644
+--- a/backend/api/src/contract_events.rs
++++ b/backend/api/src/contract_events.rs
+@@ -478,7 +478,7 @@ async fn handle_socket(
+                 match event {
+                     Ok(event) => {
+                         if filter.matches(&event) {
+-                            let msg = ServerMessage::Event { event };
++                            let msg = ServerMessage::Event { event: event.clone() };
+                             if send_json(&mut sender, &msg).await.is_err() {
+                                 break;
+                             }
+diff --git a/backend/api/src/handlers.rs b/backend/api/src/handlers.rs
+index dd1019d..f7ea72a 100644
+--- a/backend/api/src/handlers.rs
++++ b/backend/api/src/handlers.rs
+@@ -4,7 +4,7 @@ use axum::{
+         rejection::{JsonRejection, QueryRejection},
+         Path, Query, State,
+     },
+-    http::{header, HeaderMap, StatusCode},
++    http::{header, HeaderMap, Method, StatusCode},
+     response::{IntoResponse, Response},
+     Json,
+ };
+@@ -62,6 +62,34 @@ pub(crate) fn db_internal_error(operation: &str, err: sqlx::Error) -> ApiError {
+     ApiError::internal("An unexpected database error occurred")
+ }
+ 
++pub(crate) async fn fetch_contract_identity(
++    state: &AppState,
++    id: &str,
++) -> ApiResult<(Uuid, String)> {
++    if let Ok(uuid) = Uuid::parse_str(id) {
++        let (contract_id,): (String,) = sqlx::query_as("SELECT contract_id FROM contracts WHERE id = $1")
++            .bind(uuid)
++            .fetch_one(&state.db)
++            .await
++            .map_err(|err| match err {
++                sqlx::Error::RowNotFound => ApiError::not_found("ContractNotFound", "Contract not found"),
++                _ => db_internal_error("fetch contract identity by uuid", err),
++            })?;
++        return Ok((uuid, contract_id));
++    }
++
++    let (uuid, contract_id): (Uuid, String) =
++        sqlx::query_as("SELECT id, contract_id FROM contracts WHERE contract_id = $1")
++            .bind(id)
++            .fetch_one(&state.db)
++            .await
++            .map_err(|err| match err {
++                sqlx::Error::RowNotFound => ApiError::not_found("ContractNotFound", "Contract not found"),
++                _ => db_internal_error("fetch contract identity by address", err),
++            })?;
++    Ok((uuid, contract_id))
++}
++
+ #[allow(dead_code)]
+ fn map_json_rejection(err: JsonRejection) -> ApiError {
+     ApiError::bad_request(
+@@ -100,21 +128,19 @@ fn contract_timestamp_for_sort(
+     }
+ }
+ 
++
+ async fn track_contract_access(state: &AppState, contract_id: Uuid) {
+     let cache_key = contract_id.to_string();
+     if !state.cache.should_refresh_contract_access(&cache_key).await {
+         return;
+     }
+-
++    
+     let db = state.db.clone();
+     tokio::spawn(async move {
+-        if let Err(err) = sqlx::query("UPDATE contracts SET last_accessed_at = NOW() WHERE id = $1")
++        let _: Result<(), _> = sqlx::query("UPDATE contracts SET last_accessed_at = NOW() WHERE id = $1")
+             .bind(contract_id)
+             .execute(&db)
+-            .await
+-        {
+-            tracing::warn!(contract_id = %contract_id, error = ?err, "failed to refresh contract last_accessed_at");
+-        }
++            .await;
+     });
+ }
+ 
+@@ -1197,9 +1223,8 @@ pub async fn list_contracts(
+     let w_rat = params.w_rat.unwrap_or(0.4);
+     let w_pers = 0.5; // Weight for personalized boost
+ 
+-    // Build dynamic query with advanced ranking
+-    let mut query = String::from("WITH contract_stats AS (\n");
+-    query.push_str(
++    let mut query = sqlx::QueryBuilder::<sqlx::Postgres>::new("WITH contract_stats AS (\n");
++    query.push(
+         "    SELECT 
+                 c.id,
+                 COUNT(DISTINCT ci.id) as interaction_count,
+@@ -1209,16 +1234,14 @@ pub async fn list_contracts(
+     );
+ 
+     if let Some(ref uid) = params.user_id {
+-        let cleaned_uid = uid.replace('\'', "''");
+-        query.push_str(&format!(
+-            ",\n                COUNT(DISTINCT CASE WHEN ci.user_address = '{}' THEN ci.id END) as user_interaction_count",
+-            cleaned_uid
+-        ));
++        query.push(",\n                COUNT(DISTINCT CASE WHEN ci.user_address = ");
++        query.push_bind(uid);
++        query.push(" THEN ci.id END) as user_interaction_count");
+     } else {
+-        query.push_str(",\n                0 as user_interaction_count");
++        query.push(",\n                0 as user_interaction_count");
+     }
+ 
+-    query.push_str(
++    query.push(
+         "\n            FROM contracts c
+             LEFT JOIN contract_interactions ci ON c.id = ci.contract_id
+             LEFT JOIN contract_versions cv ON c.id = cv.contract_id
+@@ -1227,44 +1250,42 @@ pub async fn list_contracts(
+         ),\n",
+     );
+ 
+-    query.push_str("ranked_contracts AS (\n");
+-    query.push_str("    SELECT \n");
+-    query.push_str("        c.*, \n");
++    query.push("ranked_contracts AS (\n");
++    query.push("    SELECT \n");
++    query.push("        c.*, \n");
+ 
+     if let Some(ref q) = params.query {
+-        // Clean query for tsquery
+-        let cleaned_q = q.replace('\'', "''");
+-        query.push_str(&format!(
+-            "        ts_rank_cd(c.search_vector, plainto_tsquery('english', '{}')) as text_relevance,\n",
+-            cleaned_q
+-        ));
++        query.push("        ts_rank_cd(c.search_vector, plainto_tsquery('english', ");
++        query.push_bind(q);
++        query.push(")) as relevance_score,\n");
+     } else {
+-        query.push_str("        0.0 as text_relevance,\n");
++        query.push("        0.0 as relevance_score,\n");
+     }
+ 
+-    query.push_str(&format!(
++    query.push(
+         "        LOG(1 + cs.interaction_count + 2 * cs.deployment_count) as popularity_score,
+         1.0 / (1.0 + EXTRACT(DAYS FROM (NOW() - c.updated_at)) / 30.0) as recency_score,
+         (cs.avg_rating / 5.0) * LOG(1.0 + cs.review_count) as rating_score,
+         LOG(1 + cs.user_interaction_count) as personal_boost
+     FROM contracts c
+     JOIN contract_stats cs ON c.id = cs.id
+-    WHERE (c.visibility = 'public'"
+-    ));
++    WHERE (c.visibility = 'public'",
++    );
+ 
+     let mut count_query =
+-        String::from("SELECT COUNT(*) FROM contracts c WHERE (c.visibility = 'public'");
++        sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT COUNT(*) FROM contracts c WHERE (c.visibility = 'public'");
+ 
+     if let Some(claims) = claims {
+-        let visibility_clause = format!(
+-            " OR (c.visibility = 'private' AND c.organization_id IN (SELECT organization_id FROM organization_members om JOIN publishers p ON om.publisher_id = p.id WHERE p.stellar_address = '{}'))",
+-            claims.sub.replace('\'', "''")
+-        );
+-        query.push_str(&visibility_clause);
+-        count_query.push_str(&visibility_clause);
++        query.push(" OR (c.visibility = 'private' AND c.organization_id IN (SELECT organization_id FROM organization_members om JOIN publishers p ON om.publisher_id = p.id WHERE p.stellar_address = ");
++        query.push_bind(&claims.sub);
++        query.push("))");
++        
++        count_query.push(" OR (c.visibility = 'private' AND c.organization_id IN (SELECT organization_id FROM organization_members om JOIN publishers p ON om.publisher_id = p.id WHERE p.stellar_address = ");
++        count_query.push_bind(&claims.sub);
++        count_query.push("))");
+     }
+-    query.push_str(")");
+-    count_query.push_str(")");
++    query.push(")");
++    count_query.push(")");
+ 
+     if params.verified_only.unwrap_or(false) {
+         query.push(" AND c.is_verified = true");
+@@ -1403,17 +1424,16 @@ pub async fn list_contracts(
+             query.push(", c.id ");
+             query.push(id_direction);
+         }
+-        shared::SortBy::Deployments => "c.deployment_count".to_string(),
+-        shared::SortBy::Relevance => {
++        _ => {
+             if let Some(ref q) = params.query {
+                 let prefix = format!("{}%", q.to_ascii_lowercase());
+                 query.push(" ORDER BY (CASE WHEN lower(c.name) = lower(");
+                 query.push_bind(q);
+                 query.push(") THEN 3.0 WHEN lower(c.name) LIKE ");
+                 query.push_bind(&prefix);
+-                query.push(" THEN 1.5 ELSE 0.0 END + ts_rank_cd(c.search_document, contracts_build_tsquery(");
++                query.push(" THEN 1.5 ELSE 0.0 END + ts_rank_cd(c.search_vector, plainto_tsquery('english', ");
+                 query.push_bind(q);
+-                query.push("), 32)) ");
++                query.push("))) ");
+                 query.push(direction);
+                 query.push(", c.id ");
+                 query.push(id_direction);
+@@ -1431,15 +1451,15 @@ pub async fn list_contracts(
+     query.push(" OFFSET ");
+     query.push_bind(offset);
+ 
+-    let contracts: Vec<Contract> = match query.build_query_as().fetch_all(&state.db).await {
++    let contracts: Vec<Contract> = match query.build_query_as::<Contract>().fetch_all(&state.db).await {
+         Ok(rows) => rows,
+         Err(err) => {
+-            tracing::error!(query = %query, error = ?err, "Search query failed");
++            tracing::error!(error = ?err, "Search query failed");
+             return db_internal_error("list contracts with ranking", err).into_response();
+         }
+     };
+ 
+-    let total: i64 = match count_query.build_query_scalar().fetch_one(&state.db).await {
++    let total: i64 = match count_query.build_query_scalar::<i64>().fetch_one(&state.db).await {
+         Ok(v) => v,
+         Err(err) => return db_internal_error("count filtered contracts", err).into_response(),
+     };
+@@ -2419,38 +2439,6 @@ pub async fn create_contract_version(
+     Ok(Json(version_row))
+ }
+ 
+-async fn fetch_contract_identity(state: &AppState, id: &str) -> ApiResult<(Uuid, String)> {
+-    if let Ok(uuid) = Uuid::parse_str(id) {
+-        let row = sqlx::query_as::<_, (Uuid, String)>(
+-            "SELECT id, contract_id FROM contracts WHERE id = $1",
+-        )
+-        .bind(uuid)
+-        .fetch_optional(&state.db)
+-        .await
+-        .map_err(|err| db_internal_error("fetch contract", err))?;
+-        return row.ok_or_else(|| {
+-            ApiError::not_found(
+-                "ContractNotFound",
+-                format!("No contract found with ID: {}", id),
+-            )
+-        });
+-    }
+-
+-    let row = sqlx::query_as::<_, (Uuid, String)>(
+-        "SELECT id, contract_id FROM contracts WHERE contract_id = $1",
+-    )
+-    .bind(id)
+-    .fetch_optional(&state.db)
+-    .await
+-    .map_err(|err| db_internal_error("fetch contract", err))?;
+-
+-    row.ok_or_else(|| {
+-        ApiError::not_found(
+-            "ContractNotFound",
+-            format!("No contract found with ID: {}", id),
+-        )
+-    })
+-}
+ 
+ async fn ensure_contract_exists(
+     state: &AppState,
+diff --git a/backend/api/src/main.rs b/backend/api/src/main.rs
+index bb3ef2e..94a55e8 100644
+--- a/backend/api/src/main.rs
++++ b/backend/api/src/main.rs
+@@ -12,6 +12,7 @@ mod canary_handlers;
+ mod compatibility_testing_handlers;
+ mod contract_events;
+ mod db_monitoring;
++mod graphql;
+ 
+ mod activity_feed_handlers;
+ mod activity_feed_routes;
+@@ -177,7 +178,10 @@ async fn main() -> Result<()> {
+     let je = job_engine.clone();
+     tokio::spawn(async move { je.run_worker(job_rx).await });
+ 
+-    let state = AppState::new(pool.clone(), registry, job_engine, is_shutting_down.clone()).await;
++    let state = AppState::new(pool.clone(), registry, job_engine, is_shutting_down.clone()).await?;
++
++    // Initialize GraphQL schema
++    let schema = graphql::schema::build_schema(state.clone());
+ 
+     // Spawn the background DB and cache monitoring task
+     db_monitoring::spawn_db_monitoring_task(pool.clone(), state.cache.clone());
+@@ -255,6 +259,8 @@ async fn main() -> Result<()> {
+         .merge(routes::observability_routes())
+         .merge(routes::websocket_routes())
+         .merge(release_notes_routes::release_notes_routes())
++        .route("/api/graphql", axum::routing::post(graphql::graphql_handler).with_state(schema))
++        .route("/api/graphql/playground", axum::routing::get(graphql::graphql_playground))
+         .nest("/api", activity_feed_routes::routes())
+         .fallback(handlers::route_not_found)
+         .layer(middleware::from_fn(
+diff --git a/backend/api/src/state.rs b/backend/api/src/state.rs
+index fd90711..1d67ce8 100644
+--- a/backend/api/src/state.rs
++++ b/backend/api/src/state.rs
+@@ -47,6 +47,7 @@ pub struct AppState {
+     pub auth_mgr: Arc<RwLock<AuthManager>>,
+     pub resource_mgr: Arc<RwLock<ResourceManager>>,
+     pub event_broadcaster: broadcast::Sender<RealtimeEvent>,
++    pub contract_events: Arc<ContractEventHub>,
+ }
+ 
+ impl AppState {
+@@ -55,14 +56,14 @@ impl AppState {
+         registry: Registry,
+         job_engine: Arc<soroban_batch::engine::JobEngine>,
+         is_shutting_down: Arc<AtomicBool>,
+-    ) -> Result<Self, crate::shared::error::RegistryError> {
++    ) -> Result<Self, shared::error::RegistryError> {
+         let config = CacheConfig::from_env();
+         let auth_mgr = Arc::new(RwLock::new(
+             AuthManager::from_env().expect("JWT config validated at startup"),
+         ));
+         let resource_mgr = Arc::new(RwLock::new(ResourceManager::new()));
+         let (event_broadcaster, _) = broadcast::channel(100);
+-        Self {
++        Ok(Self {
+             db,
+             started_at: Instant::now(),
+             cache: Arc::new(CacheLayer::new(config).await),
+@@ -73,6 +74,7 @@ impl AppState {
+             auth_mgr,
+             resource_mgr,
+             event_broadcaster,
+-        }
++            contract_events: Arc::new(ContractEventHub::from_env()),
++        })
+     }
+ }
+diff --git a/backend/shared/Cargo.toml b/backend/shared/Cargo.toml
+index 118435d..017c8c5 100644
+--- a/backend/shared/Cargo.toml
++++ b/backend/shared/Cargo.toml
+@@ -8,7 +8,7 @@ license.workspace = true
+ [dependencies]
+ serde = { workspace = true }
+ serde_json = { workspace = true }
+-sqlx = { workspace = true }
++sqlx = { workspace = true, features = ["postgres", "uuid", "chrono", "json", "rust_decimal"] }
+ uuid = { workspace = true }
+ chrono = { workspace = true }
+ anyhow = { workspace = true }

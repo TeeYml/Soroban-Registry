@@ -16,24 +16,39 @@ async fn handle_connection(socket: WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
     let mut broadcaster = state.event_broadcaster.subscribe();
 
-    // Spawn a task to forward broadcast messages to this client
+    // Use a channel to coordinate outgoing messages to the sender
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<axum::extract::ws::Message>(100);
+
+    // Spawn a task to forward messages from the channel to the WebSocket sender
     let send_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Spawn a task to forward broadcast messages to the channel
+    let tx_broadcast = tx.clone();
+    let broadcast_task = tokio::spawn(async move {
         while let Ok(event) = broadcaster.recv().await {
             if let Ok(json) = serde_json::to_string(&event) {
                 let msg = axum::extract::ws::Message::Text(json);
-                if sender.send(msg).await.is_err() {
+                if tx_broadcast.send(msg).await.is_err() {
                     break;
                 }
             }
         }
     });
 
-    // Handle incoming messages (mainly ping/pong for keeping connection alive)
+    // Handle incoming messages
     while let Some(Ok(msg)) = receiver.next().await {
         match msg {
             axum::extract::ws::Message::Text(text) => {
                 if text == "ping" {
-                    // Ignore explicit ping text; heartbeat stream still keeps connection alive.
+                    let _ = tx
+                        .send(axum::extract::ws::Message::Text("pong".to_string()))
+                        .await;
                 }
             }
             axum::extract::ws::Message::Close(_) => break,
@@ -41,5 +56,6 @@ async fn handle_connection(socket: WebSocket, state: AppState) {
         }
     }
 
+    broadcast_task.abort();
     send_task.abort();
 }

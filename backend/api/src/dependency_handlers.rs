@@ -18,6 +18,14 @@ pub async fn get_contract_dependencies(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<DependencyResponse>> {
+    let response = get_contract_dependencies_internal(&state, id).await?;
+    Ok(Json(response))
+}
+
+pub(crate) async fn get_contract_dependencies_internal(
+    state: &AppState,
+    id: Uuid,
+) -> ApiResult<DependencyResponse> {
     // 1. Fetch the root contract
     let root_contract =
         sqlx::query("SELECT id, contract_id, name, verification_status FROM contracts WHERE id = $1")

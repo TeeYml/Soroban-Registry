@@ -482,13 +482,9 @@ async fn handle_socket(
             event = events.recv() => {
                 match event {
                     Ok(event) => {
-                        // Convert RealtimeEvent to a simple JSON representation
-                        let json_msg = serde_json::json!({
-                            "type": "event",
-                            "data": event,
-                        });
-                        if let Ok(json_str) = serde_json::to_string(&json_msg) {
-                            if sender.send(Message::Text(json_str)).await.is_err() {
+                        if filter.matches(&event) {
+                            let msg = ServerMessage::Event { event: event.clone() };
+                            if send_json(&mut sender, &msg).await.is_err() {
                                 break;
                             }
                         }

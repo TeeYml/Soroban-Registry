@@ -215,6 +215,43 @@ pub async fn list_categories(
     Ok(Json(rows.into_iter().map(CategoryResponse::from).collect()))
 }
 
+/// Get a single category by ID.
+#[utoipa::path(
+    get,
+    path = "/api/categories/{id}",
+    params(
+        ("id" = String, Path, description = "Category UUID")
+    ),
+    responses(
+        (status = 200, description = "Category details", body = CategoryResponse),
+        (status = 404, description = "Category not found")
+    ),
+    tag = "Categories"
+)]
+pub async fn get_category(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<CategoryResponse>> {
+    let category_uuid = parse_category_id(&id)?;
+
+    let row: CategoryRow = sqlx::query_as(&format!(
+        "{} WHERE cc.id = $1",
+        LIST_QUERY.trim_end_matches("ORDER BY cc.is_default DESC, cc.name ASC")
+    ))
+    .bind(category_uuid)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|err| match err {
+        sqlx::Error::RowNotFound => ApiError::not_found(
+            "CategoryNotFound",
+            format!("No category found with ID: {}", id),
+        ),
+        _ => db_err("get category", err),
+    })?;
+
+    Ok(Json(CategoryResponse::from(row)))
+}
+
 /// Create a new contract category.
 ///
 /// The slug is derived automatically from the name.  Returns 409 Conflict if a

@@ -1701,6 +1701,85 @@ pub struct CreateAlertConfigRequest {
     pub severity: Option<AlertSeverity>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PerformanceBenchmark {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub contract_version_id: Option<Uuid>,
+    pub version: Option<String>,
+    pub benchmark_name: String,
+    pub execution_time_ms: f64,
+    pub gas_used: i64,
+    pub sample_size: i32,
+    pub source: String,
+    pub recorded_at: DateTime<Utc>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PerformanceMetricSnapshot {
+    pub metric_type: String,
+    pub benchmark_name: Option<String>,
+    pub latest_value: f64,
+    pub previous_value: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub recorded_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PerformanceTrendPoint {
+    pub bucket_start: DateTime<Utc>,
+    pub bucket_end: DateTime<Utc>,
+    pub benchmark_name: String,
+    pub avg_execution_time_ms: f64,
+    pub avg_gas_used: f64,
+    pub sample_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PerformanceRegression {
+    pub benchmark_name: String,
+    pub current_version: Option<String>,
+    pub previous_version: Option<String>,
+    pub execution_time_regression_percent: Option<f64>,
+    pub gas_regression_percent: Option<f64>,
+    pub severity: String,
+    pub detected_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PerformanceComparisonEntry {
+    pub contract_id: Uuid,
+    pub contract_name: String,
+    pub category: Option<String>,
+    pub benchmark_name: String,
+    pub avg_execution_time_ms: f64,
+    pub avg_gas_used: f64,
+    pub sample_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ContractPerformanceSummaryResponse {
+    pub contract_id: Uuid,
+    pub latest_benchmarks: Vec<PerformanceBenchmark>,
+    pub metric_snapshots: Vec<PerformanceMetricSnapshot>,
+    pub trends: Vec<PerformanceTrendPoint>,
+    pub regressions: Vec<PerformanceRegression>,
+    pub comparisons: Vec<PerformanceComparisonEntry>,
+    pub unresolved_alerts: Vec<PerformanceAlert>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct RecordPerformanceBenchmarkRequest {
+    pub contract_version_id: Option<String>,
+    pub benchmark_name: String,
+    pub execution_time_ms: f64,
+    pub gas_used: i64,
+    pub sample_size: Option<i32>,
+    pub source: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema)]
 #[sqlx(type_name = "similarity_match_type", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]

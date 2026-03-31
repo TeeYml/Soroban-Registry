@@ -428,6 +428,12 @@ pub fn health_routes() -> Router<AppState> {
         )
 }
 
+pub fn category_routes() -> Router<AppState> {
+    Router::new()
+        .route("/api/categories", get(category_handlers::list_categories))
+        .route("/api/categories/:id", get(category_handlers::get_category))
+}
+
 pub fn network_routes() -> Router<AppState> {
     Router::new()
         .route("/networks", get(handlers::list_networks))
