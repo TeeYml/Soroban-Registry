@@ -6,7 +6,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
-use shared::models::{
+use shared::{
     ContractPerformanceSummaryResponse, CreateAlertConfigRequest, PerformanceAlert,
     PerformanceAlertConfig, PerformanceAnomaly, PerformanceBenchmark, PerformanceComparisonEntry,
     PerformanceMetric, PerformanceMetricSnapshot, PerformanceRegression, PerformanceTrendPoint,
@@ -653,7 +653,7 @@ pub async fn get_contract_performance_overview(
 
 // ───────────────────── Helpers ─────────────────────
 
-async fn build_performance_summary(
+pub(crate) async fn build_performance_summary_internal(
     state: &AppState,
     contract_uuid: Uuid,
 ) -> ApiResult<ContractPerformanceSummaryResponse> {

@@ -65,6 +65,7 @@ async fn create_test_contract(client: &reqwest::Client, base_url: &str) -> Uuid 
 }
 
 // Helper to get auth token (simplified - in real tests, you'd use the auth flow)
+#[allow(dead_code)]
 async fn get_auth_token(client: &reqwest::Client, base_url: &str, address: &str) -> Option<String> {
     // Get challenge
     let challenge_res = client
@@ -251,7 +252,7 @@ async fn test_fetch_reviews_sorting() {
     );
 
     let reviews: Vec<Value> = res.json().await.expect("failed to parse reviews");
-    assert!(reviews.is_array(), "reviews response should be an array");
+    let _ = &reviews; // parsing as Vec<Value> validates it is an array
 
     // Test sorting by most_helpful
     let res = client
@@ -354,7 +355,7 @@ async fn test_rating_aggregation() {
         .unwrap_or(0);
 
     assert!(
-        avg_rating >= 0.0 && avg_rating <= 5.0,
+        (0.0..=5.0).contains(&avg_rating),
         "average rating should be between 0 and 5"
     );
     assert!(total_reviews >= 0, "total reviews should be non-negative");
@@ -557,10 +558,7 @@ async fn test_reviews_edge_cases() {
 
     assert_eq!(res.status(), StatusCode::OK);
     let reviews: Vec<Value> = res.json().await.expect("failed to parse reviews");
-    assert!(
-        reviews.is_empty() || reviews.is_array(),
-        "should return empty array for no reviews"
-    );
+    let _ = &reviews; // parsing as Vec<Value> validates structure; empty is valid
 
     // Test: Rating stats for contract with no reviews
     let res = client

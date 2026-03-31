@@ -1,0 +1,550 @@
+﻿cargo : warning: unused 
+import: `uuid::Uuid`
+At line:1 char:1
++ cargo check -p api 
+--message-format=short 2>&1 
+| Out-File -FilePath e ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (warni  
+  ng: unused import: `uui   
+ d::Uuid`:String) [], Re    
+moteException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+ --> api\src\error.rs:9:5
+  |
+9 | use uuid::Uuid;
+  |     ^^^^^^^^^^
+  |
+  = note: 
+`#[warn(unused_imports)]` 
+(part of `#[warn(unused)]`) 
+on by default
+
+warning: `api` (lib) 
+generated 1 warning (run 
+`cargo fix --lib -p api` to 
+apply 1 suggestion)
+    Checking api v0.1.0 (C:\
+Users\ADMIN\Desktop\innovati
+ve-drips\Soroban-Registry\ba
+ckend\api)
+api\src\handlers.rs:1826:1: 
+error[E0428]: the name 
+`ContractSourceResponse` is 
+defined multiple times: 
+`ContractSourceResponse` 
+redefined here
+api\src\org_handlers.rs:27:3
+0: error: set 
+`DATABASE_URL` to use query 
+macros online, or run 
+`cargo sqlx prepare` to 
+update the query cache
+api\src\performance_handlers
+.rs:10:5: error[E0432]: 
+unresolved imports `shared::
+ContractPerformanceSummaryRe
+sponse`, `shared::Performanc
+eBenchmark`, `shared::Perfor
+manceComparisonEntry`, `shar
+ed::PerformanceMetricSnapsho
+t`, `shared::PerformanceRegr
+ession`, `shared::Performanc
+eTrendPoint`, `shared::Recor
+dPerformanceBenchmarkRequest
+`: no `ContractPerformanceSu
+mmaryResponse` in the root, 
+no `PerformanceBenchmark` 
+in the root, no `Performance
+ComparisonEntry` in the 
+root, no 
+`PerformanceMetricSnapshot` 
+in the root, no 
+`PerformanceRegression` in 
+the root, no 
+`PerformanceTrendPoint` in 
+the root, no `RecordPerforma
+nceBenchmarkRequest` in the 
+root
+api\src\handlers.rs:1264:28:
+ error[E0425]: cannot find 
+type `AuthClaims` in crate 
+`shared`: not found in 
+`shared`
+api\src\handlers.rs:1616:28:
+ error[E0425]: cannot find 
+type `AuthClaims` in crate 
+`shared`: not found in 
+`shared`
+api\src\handlers.rs:1897:35:
+ error[E0433]: failed to 
+resolve: could not find 
+`SourceFormat` in `models`: 
+could not find 
+`SourceFormat` in `models`
+api\src\handlers.rs:1898:35:
+ error[E0433]: failed to 
+resolve: could not find 
+`SourceFormat` in `models`: 
+could not find 
+`SourceFormat` in `models`
+api\src\handlers.rs:1993:35:
+ error[E0433]: failed to 
+resolve: could not find 
+`SourceFormat` in `models`: 
+could not find 
+`SourceFormat` in `models`
+api\src\handlers.rs:1994:35:
+ error[E0433]: failed to 
+resolve: could not find 
+`SourceFormat` in `models`: 
+could not find 
+`SourceFormat` in `models`
+api\src\handlers.rs:2097:39:
+ error[E0433]: failed to 
+resolve: could not find 
+`SourceFormat` in `models`: 
+could not find 
+`SourceFormat` in `models`
+api\src\handlers.rs:2098:39:
+ error[E0433]: failed to 
+resolve: could not find 
+`SourceFormat` in `models`: 
+could not find 
+`SourceFormat` in `models`
+api\src\handlers.rs:3095:79:
+ error[E0425]: cannot find 
+type `GraphResponse` in 
+this scope: not found in 
+this scope
+api\src\openapi.rs:11:10: 
+error[E0433]: failed to 
+resolve: could not find `__p
+ath_get_contract_analytics` 
+in `handlers`: could not 
+find `__path_get_contract_an
+alytics` in `handlers`
+api\src\openapi.rs:11:10: 
+error[E0425]: cannot find 
+type `__path_get_contract_an
+alytics` in module 
+`handlers`
+api\src\openapi.rs:83:13: 
+error[E0425]: cannot find 
+type `ABTest` in this 
+scope: help: a struct with 
+a similar name exists: 
+`AbTest`
+api\src\rate_limit.rs:349:29
+: error[E0425]: cannot find 
+type `Method` in this 
+scope: not found in this 
+scope
+api\src\rate_limit.rs:352:9:
+ error[E0433]: failed to 
+resolve: use of undeclared 
+type `Method`: use of 
+undeclared type `Method`
+api\src\rate_limit.rs:352:24
+: error[E0433]: failed to 
+resolve: use of undeclared 
+type `Method`: use of 
+undeclared type `Method`
+api\src\rate_limit.rs:352:38
+: error[E0433]: failed to 
+resolve: use of undeclared 
+type `Method`: use of 
+undeclared type `Method`
+api\src\rate_limit.rs:352:54
+: error[E0433]: failed to 
+resolve: use of undeclared 
+type `Method`: use of 
+undeclared type `Method`
+api\src\rate_limit.rs:356:44
+: error[E0425]: cannot find 
+type `Method` in this 
+scope: not found in this 
+scope
+api\src\rate_limit.rs:357:19
+: error[E0433]: failed to 
+resolve: use of undeclared 
+type `Method`: use of 
+undeclared type `Method`
+api\src\rate_limit.rs:387:26
+: error[E0425]: cannot find 
+type `Method` in this 
+scope: not found in this 
+scope
+api\src\routes.rs:300:62: 
+error[E0425]: cannot find 
+value `get_category` in 
+module `category_handlers`: 
+help: a function with a 
+similar name exists: 
+`create_category`
+api\src\validation\payload_s
+ize.rs:80:67: error[E0425]: 
+cannot find function `get_or
+_create_correlation_id` in 
+module 
+`crate::request_tracing`: 
+help: a function with a 
+similar name exists: 
+`get_or_create_request_id`
+api\src\graphql\mod.rs:11:5:
+ warning: unused import: 
+`crate::state::AppState`
+api\src\error.rs:9:5: 
+warning: unused import: 
+`uuid::Uuid`
+api\src\handlers.rs:7:31: 
+warning: unused import: 
+`Method`
+api\src\handlers.rs:16:39: 
+warning: unused imports: `Co
+ntractAnalyticsResponse`, 
+`DeploymentStats`, 
+`InteractorStats`, 
+`TimelineEntry`, and 
+`TopUser`
+api\src\handlers.rs:126:5: 
+warning: unused import: 
+`sqlx::QueryBuilder`
+api\src\openapi.rs:7:5: 
+warning: unused import: 
+`serde_json::Value`
+api\src\websocket.rs:1:30: 
+warning: unused import: 
+`RealtimeEvent`
+api\src\websocket.rs:7:5: 
+warning: unused import: 
+`tokio::sync::broadcast`
+api\src\handlers.rs:1825:10:
+ error[E0119]: conflicting 
+implementations of trait 
+`std::fmt::Debug` for type `
+handlers::ContractSourceResp
+onse`: conflicting 
+implementation for `handlers
+::ContractSourceResponse`
+api\src\handlers.rs:1825:17:
+ error[E0119]: conflicting 
+implementations of trait `ab
+_test_handlers::_::_serde::S
+erialize` for type `handlers
+::ContractSourceResponse`: 
+conflicting implementation 
+for `handlers::ContractSourc
+eResponse`
+api\src\handlers.rs:1825:35:
+ error[E0119]: conflicting 
+implementations of trait 
+`ComposeSchema` for type `ha
+ndlers::ContractSourceRespon
+se`: conflicting 
+implementation for `handlers
+::ContractSourceResponse`
+api\src\handlers.rs:1825:35:
+ error[E0119]: conflicting 
+implementations of trait 
+`ToSchema` for type `handler
+s::ContractSourceResponse`: 
+conflicting implementation 
+for `handlers::ContractSourc
+eResponse`
+api\src\handlers.rs:238:32: 
+error[E0308]: mismatched 
+types: expected `Result<(), 
+_>`, found 
+`Result<PgQueryResult, 
+Error>`
+api\src\handlers.rs:1318:25:
+ error[E0609]: no field 
+`w_text` on type 
+`ContractSearchParams`: 
+unknown field
+api\src\handlers.rs:1319:24:
+ error[E0609]: no field 
+`w_pop` on type 
+`ContractSearchParams`: 
+unknown field
+api\src\handlers.rs:1320:24:
+ error[E0609]: no field 
+`w_rec` on type 
+`ContractSearchParams`: 
+unknown field
+api\src\handlers.rs:1321:24:
+ error[E0609]: no field 
+`w_rat` on type 
+`ContractSearchParams`: 
+unknown field
+api\src\handlers.rs:1334:35:
+ error[E0609]: no field 
+`user_id` on type 
+`ContractSearchParams`: 
+unknown field
+api\src\handlers.rs:1644:28:
+ error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\handlers.rs:1659:24:
+ error[E0061]: this 
+function takes 1 argument 
+but 2 arguments were 
+supplied
+api\src\handlers.rs:1911:10:
+ error[E0609]: no field 
+`source_storage` on type 
+`AppState`: unknown field
+api\src\handlers.rs:1910:47:
+ error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\handlers.rs:1952:9: 
+error[E0560]: struct `handle
+rs::ContractSourceResponse` 
+has no field named 
+`source_base64`: `handlers::
+ContractSourceResponse` 
+does not have this field
+api\src\handlers.rs:2016:10:
+ error[E0609]: no field 
+`source_storage` on type 
+`AppState`: unknown field
+api\src\handlers.rs:2015:24:
+ error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\handlers.rs:2047:9: 
+error[E0560]: struct `handle
+rs::ContractSourceResponse` 
+has no field named 
+`source_base64`: `handlers::
+ContractSourceResponse` 
+does not have this field
+api\src\handlers.rs:2117:14:
+ error[E0609]: no field 
+`source_storage` on type 
+`&AppState`: unknown field
+api\src\handlers.rs:2116:21:
+ error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\handlers.rs:3361:20:
+ error[E0061]: this 
+function takes 3 arguments 
+but 2 arguments were 
+supplied
+api\src\handlers.rs:4966:44:
+ error[E0277]: the trait 
+bound `QueryNode: 
+serde::Serialize` is not 
+satisfied: unsatisfied 
+trait bound
+api\src\org_handlers.rs:21:1
+0: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:20:1
+8: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:27:3
+0: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:35:3
+8: error[E0277]: the trait 
+bound `ApiError: 
+From<reqwest::StatusCode>` 
+is not satisfied: 
+unsatisfied trait bound
+api\src\org_handlers.rs:42:2
+9: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:58:5
+: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:71:5
+: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:91:3
+2: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:98:3
+2: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:86:1
+5: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:107:
+35: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:115:
+46: error[E0277]: the trait 
+bound `ApiError: 
+From<reqwest::StatusCode>` 
+is not satisfied: 
+unsatisfied trait bound
+api\src\org_handlers.rs:130:
+27: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:148:
+23: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:132:
+29: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:176:
+55: error[E0277]: `?` 
+couldn't convert the error 
+to `ApiError`: the trait 
+`From<reqwest::StatusCode>` 
+is not implemented for 
+`ApiError`
+api\src\org_handlers.rs:188:
+35: error[E0277]: the trait 
+bound `ApiError: 
+From<reqwest::StatusCode>` 
+is not satisfied: 
+unsatisfied trait bound
+api\src\org_handlers.rs:199:
+27: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:209:
+23: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:201:
+19: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:224:
+27: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:231:
+23: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:227:
+28: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:250:
+21: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:238:
+5: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:267:
+10: error[E0609]: no field 
+`pool` on type `AppState`: 
+unknown field
+api\src\org_handlers.rs:266:
+18: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:273:
+18: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:286:
+30: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:295:
+5: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:310:
+5: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\org_handlers.rs:318:
+5: error[E0282]: type 
+annotations needed: cannot 
+infer type
+api\src\performance_handlers
+.rs:625:1: error: this 
+function depends on never 
+type fallback being `()`
+api\src\websocket.rs:38:26: 
+error[E0599]: no method 
+named `get_mut` found for 
+struct `SplitStream<S>` in 
+the current scope: method 
+not found in `SplitStream<ax
+um::extract::ws::WebSocket>`
+api\src\handlers.rs:1834:9: 
+error[E0609]: no field 
+`source_base64` on type `&ha
+ndlers::ContractSourceRespon
+se`: unknown field
+api\src\routes.rs:275:56: 
+error[E0277]: the trait 
+bound `fn(State<...>, ...) 
+-> ... 
+{save_favorite_search}: 
+Handler<_, ...>` is not 
+satisfied: the trait 
+`Handler<_, AppState>` is 
+not implemented for fn item 
+`fn(State<AppState>, 
+ValidatedJson<...>) -> ... 
+{save_favorite_search}`
+api\src\validation\extractor
+s.rs:59:13: error[E0560]: 
+struct 
+`ValidationErrorResponse` 
+has no field named 
+`correlation_id`: 
+`ValidationErrorResponse` 
+does not have this field
+api\src\main.rs:262:52: 
+error[E0277]: the trait 
+bound `fn(State<...>, ...) 
+-> ... {graphql_handler}: 
+Handler<_, _>` is not 
+satisfied: the trait 
+`Handler<_, _>` is not 
+implemented for fn item 
+`fn(State<Schema<Query, 
+..., ...>>, ...) -> ... 
+{graphql_handler}`
+api\src\handlers.rs:2072:25:
+ warning: unused variable: 
+`contract_id`: help: if 
+this is intentional, prefix 
+it with an underscore: 
+`_contract_id`
+api\src\handlers.rs:2140:26:
+ warning: unused variable: 
+`compare_source_id`: help: 
+if this is intentional, 
+prefix it with an 
+underscore: 
+`_compare_source_id`
+warning: `api` (bin "api") 
+generated 10 warnings
+error: could not compile 
+`api` (bin "api") due to 87 
+previous errors; 10 
+warnings emitted

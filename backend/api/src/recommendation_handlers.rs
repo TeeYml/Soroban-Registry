@@ -5,10 +5,10 @@ use axum::{
 };
 use chrono::Utc;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use shared::models::{
     ContractRecommendationsResponse, Network, RecommendationReason, RecommendedContract,
 };
-use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use std::cmp::Ordering;
 use std::time::Duration;
@@ -56,6 +56,7 @@ struct RecommendationCandidateRow {
     description: Option<String>,
     network: Network,
     category: Option<String>,
+    #[allow(dead_code)]
     tags: Vec<String>,
     popularity: i64,
     similarity_score: f64,
@@ -126,14 +127,16 @@ pub async fn get_contract_recommendations(
         .await;
 
     if let (Some(serialized), true) = (cached_payload, cache_hit) {
-        if let Ok(mut response) = serde_json::from_str::<ContractRecommendationsResponse>(&serialized)
+        if let Ok(mut response) =
+            serde_json::from_str::<ContractRecommendationsResponse>(&serialized)
         {
             response.cached = true;
             return Ok(Json(response));
         }
     }
 
-    let candidates = fetch_recommendation_candidates(&state, contract_uuid, query.network.clone()).await?;
+    let candidates =
+        fetch_recommendation_candidates(&state, contract_uuid, query.network.clone()).await?;
     let weights = weights_for_algorithm(&selected_algorithm);
     let scored = score_candidates(candidates, &weights);
 
@@ -323,8 +326,16 @@ fn weights_for_algorithm(algorithm: &str) -> Weights {
     }
 }
 
-fn score_candidates(rows: Vec<RecommendationCandidateRow>, weights: &Weights) -> Vec<ScoredCandidate> {
-    let max_popularity = rows.iter().map(|row| row.popularity).max().unwrap_or(1).max(1) as f64;
+fn score_candidates(
+    rows: Vec<RecommendationCandidateRow>,
+    weights: &Weights,
+) -> Vec<ScoredCandidate> {
+    let max_popularity = rows
+        .iter()
+        .map(|row| row.popularity)
+        .max()
+        .unwrap_or(1)
+        .max(1) as f64;
 
     let mut scored: Vec<ScoredCandidate> = rows
         .into_iter()
@@ -561,7 +572,9 @@ mod tests {
 
         let rec = to_recommended_contract(candidate);
         assert!(!rec.reasons.is_empty());
-        assert!(rec.explanation.contains("Shares category") || rec.explanation.contains("similarity"));
+        assert!(
+            rec.explanation.contains("Shares category") || rec.explanation.contains("similarity")
+        );
     }
 
     #[test]

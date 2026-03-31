@@ -134,7 +134,7 @@ mod tests {
     use std::sync::{Arc, RwLock};
     use std::time::Instant;
 
-    fn test_app_state() -> AppState {
+    async fn test_app_state() -> AppState {
         let db = sqlx::pool::PoolOptions::new()
             .max_connections(1)
             .connect_lazy("postgres://localhost/test")
@@ -145,10 +145,11 @@ mod tests {
         )));
         let resource_mgr = Arc::new(RwLock::new(ResourceManager::new()));
         let (job_engine, _rx) = soroban_batch::engine::JobEngine::new();
+        let (event_broadcaster, _) = tokio::sync::broadcast::channel(100);
         AppState {
             db,
             started_at: Instant::now(),
-            cache: Arc::new(CacheLayer::new(CacheConfig::default())),
+            cache: Arc::new(CacheLayer::new(CacheConfig::default()).await),
             registry,
             job_engine: Arc::new(job_engine),
             is_shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -156,12 +157,14 @@ mod tests {
             auth_mgr,
             resource_mgr,
             contract_events: Arc::new(ContractEventHub::from_env()),
+            source_storage: Arc::new(shared::source_storage::SourceStorage::new().await.unwrap()),
+            event_broadcaster,
         }
     }
 
     #[tokio::test]
     async fn challenge_returns_nonce_for_address() {
-        let state = test_app_state();
+        let state = test_app_state().await;
         let query = ChallengeQuery {
             address: "GABCDEF".to_string(),
         };
@@ -175,7 +178,7 @@ mod tests {
 
     #[tokio::test]
     async fn challenge_rejects_empty_address() {
-        let state = test_app_state();
+        let state = test_app_state().await;
         let query = ChallengeQuery {
             address: "   ".to_string(),
         };
@@ -185,7 +188,7 @@ mod tests {
 
     #[tokio::test]
     async fn verify_issues_jwt_when_signature_valid() {
-        let state = test_app_state();
+        let state = test_app_state().await;
         let key = SigningKey::from_bytes(&[1u8; 32]);
         let address_hex = hex::encode(key.verifying_key().as_bytes());
 

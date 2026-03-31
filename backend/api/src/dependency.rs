@@ -378,7 +378,155 @@ pub async fn save_dependencies(
     Ok(())
 }
 
+
+/// Build a localized graph around a specific contract
+pub async fn build_local_graph(
+    pool: &PgPool,
+    root_id: Uuid,
+    depth: u32,
+) -> Result<GraphResponse> {
+    let mut neighborhood = HashSet::new();
+    neighborhood.insert(root_id);
+
+    let mut current_layer = vec![root_id];
+    for _ in 0..depth {
+        if current_layer.is_empty() {
+            break;
+        }
+
+        let next_nodes: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            SELECT target FROM (
+                SELECT dependency_contract_id as target FROM contract_dependencies WHERE contract_id = ANY($1) AND dependency_contract_id IS NOT NULL
+                UNION
+                SELECT contract_id as target FROM contract_dependencies WHERE dependency_contract_id = ANY($1)
+            ) t
+            "#,
+        )
+        .bind(&current_layer)
+        .fetch_all(pool)
+        .await?;
+
+        current_layer.clear();
+        for node_id in next_nodes {
+            if neighborhood.insert(node_id) {
+                current_layer.push(node_id);
+            }
+        }
+    }
+
+    let node_ids: Vec<Uuid> = neighborhood.into_iter().collect();
+    if node_ids.is_empty() {
+        return Ok(GraphResponse {
+            nodes: vec![],
+            edges: vec![],
+        });
+    }
+
+    let contracts: Vec<GraphNode> = sqlx::query_as(
+        "SELECT id, contract_id, name, network, is_verified, category, tags 
+         FROM contracts
+         WHERE id = ANY($1)",
+    )
+    .bind(&node_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let edge_rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT contract_id as source, dependency_contract_id as target
+         FROM contract_dependencies
+         WHERE dependency_contract_id IS NOT NULL
+           AND contract_id = ANY($1)
+           AND dependency_contract_id = ANY($1)",
+    )
+    .bind(&node_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let exact_edge_counts: HashMap<(Uuid, Uuid), i64> = {
+        let rows: Vec<(Uuid, Uuid, i64)> = sqlx::query_as(
+            "SELECT source_contract_id, target_contract_id, COALESCE(SUM(call_count), 0)::bigint AS total
+             FROM contract_call_edge_daily_aggregates
+             WHERE source_contract_id = ANY($1)
+               AND target_contract_id = ANY($1)
+             GROUP BY source_contract_id, target_contract_id",
+        )
+        .bind(&node_ids)
+        .fetch_all(pool)
+        .await?;
+        rows.into_iter()
+            .map(|(source, target, total)| ((source, target), total))
+            .collect()
+    };
+
+    let source_interaction_counts: HashMap<Uuid, i64> = {
+        let rows: Vec<(Uuid, i64)> = sqlx::query_as(
+            "SELECT contract_id, COALESCE(SUM(count), 0)::bigint AS total
+             FROM contract_interaction_daily_aggregates
+             WHERE contract_id = ANY($1)
+               AND interaction_type = 'invoke'
+             GROUP BY contract_id",
+        )
+        .bind(&node_ids)
+        .fetch_all(pool)
+        .await?;
+        rows.into_iter().collect()
+    };
+
+    let mut out_degree: HashMap<Uuid, i64> = HashMap::new();
+    for (source, _) in &edge_rows {
+        *out_degree.entry(*source).or_insert(0) += 1;
+    }
+
+    let (component_by_node, component_sizes) = strongly_connected_components(&node_ids, &edge_rows);
+
+    let edges: Vec<GraphEdge> = edge_rows
+        .into_iter()
+        .map(|(source, target)| {
+            let exact_frequency = exact_edge_counts.get(&(source, target)).copied();
+            let source_total = source_interaction_counts.get(&source).copied();
+            let degree = out_degree.get(&source).copied().unwrap_or(0);
+
+            let inferred_frequency = if degree > 0 {
+                source_total
+                    .filter(|total| *total > 0)
+                    .map(|total| (total / degree).max(1))
+            } else {
+                None
+            };
+
+            let is_estimated = exact_frequency.is_none() && inferred_frequency.is_some();
+            let call_frequency = exact_frequency.or(inferred_frequency);
+
+            let component_source = component_by_node.get(&source).copied();
+            let component_target = component_by_node.get(&target).copied();
+            let is_circular = match (component_source, component_target) {
+                (Some(cs), Some(ct)) if cs == ct => {
+                    component_sizes.get(cs).copied().unwrap_or(0) > 1 || source == target
+                }
+                _ => false,
+            };
+
+            GraphEdge {
+                source,
+                target,
+                dependency_type: "calls".to_string(),
+                call_frequency,
+                call_volume: call_frequency,
+                is_estimated,
+                is_circular,
+            }
+        })
+        .collect();
+
+    Ok(GraphResponse {
+        nodes: contracts,
+        edges,
+    })
+}
+
 #[cfg(test)]
+
 mod tests {
     use super::*;
     use serde_json::json;

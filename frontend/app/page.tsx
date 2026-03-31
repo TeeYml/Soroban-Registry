@@ -5,12 +5,13 @@ import { api } from '@/lib/api';
 import ContractCard from '@/components/ContractCard';
 import ContractCardSkeleton from '@/components/ContractCardSkeleton';
 import LoadingSkeleton from '@/components/LoadingSkeleton';
-import { Search, Package, CheckCircle, Users, ArrowRight, Sparkles, Shield, GitBranch, Upload, Terminal, Github, MessageCircle, BookOpen, Copy, Check } from 'lucide-react';
+import { Search, Package, CheckCircle, Users, ArrowRight, Sparkles, Shield, GitBranch, Upload, Terminal, Github, MessageCircle, BookOpen, Copy, Check, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import Navbar from '@/components/Navbar';
+import ActivityFeed from '@/components/ActivityFeed';
 
 export default function Home() {
   const router = useRouter();
@@ -250,6 +251,71 @@ export default function Home() {
           </div>
         )}
       </section>
+
+    {/* Activity Feed Section */}
+    <section className="bg-muted/30 border-y border-border">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+          <div className="lg:col-span-2">
+            <ActivityFeed />
+          </div>
+          <div className="space-y-8">
+            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500" />
+                Live Insights
+              </h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                The registry is alive with activity. Watch as developers publish, verify, and deploy contracts in real-time.
+              </p>
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 p-1.5 rounded-full bg-blue-500/10 text-blue-500">
+                    <Upload className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold">Publishing</h4>
+                    <p className="text-xs text-muted-foreground">New contracts added to the registry</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 p-1.5 rounded-full bg-emerald-500/10 text-emerald-500">
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold">Verification</h4>
+                    <p className="text-xs text-muted-foreground">Source code validated by our nodes</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 p-1.5 rounded-full bg-amber-500/10 text-amber-500">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold">Deployments</h4>
+                    <p className="text-xs text-muted-foreground">Contracts going live on Stellar networks</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20 rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold mb-2">Build Together</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Share your contracts with the ecosystem and help other builders.
+              </p>
+              <Link 
+                href="/publish"
+                className="w-full py-2 bg-primary text-primary-foreground rounded-lg font-medium text-sm flex items-center justify-center gap-2"
+              >
+                Publish Your Contract
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
       {/* Install & Learn — Code Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">

@@ -16,10 +16,10 @@ interface GraphControlsProps {
     onShowCyclesOnlyChange: (value: boolean) => void;
     minCallFrequency: number;
     onMinCallFrequencyChange: (value: number) => void;
-    demoMode: boolean;
-    onDemoModeChange: (v: boolean) => void;
-    demoNodeCount: number;
-    onDemoNodeCountChange: (v: number) => void;
+    demoMode?: boolean;
+    onDemoModeChange?: (v: boolean) => void;
+    demoNodeCount?: number;
+    onDemoNodeCountChange?: (v: number) => void;
     totalNodes: number;
     totalEdges: number;
     cyclicEdgeCount: number;
@@ -56,10 +56,10 @@ export default function GraphControls({
     onShowCyclesOnlyChange,
     minCallFrequency,
     onMinCallFrequencyChange,
-    demoMode,
-    onDemoModeChange,
-    demoNodeCount,
-    onDemoNodeCountChange,
+    demoMode = false,
+    onDemoModeChange = () => {},
+    demoNodeCount = 100,
+    onDemoNodeCountChange = () => {},
     totalNodes,
     totalEdges,
     cyclicEdgeCount,

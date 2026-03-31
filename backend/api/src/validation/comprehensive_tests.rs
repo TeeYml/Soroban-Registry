@@ -483,7 +483,10 @@ mod tests {
             FieldError::new("name", "is required"),
         ];
 
-        let response = crate::validation::extractors::ValidationErrorResponse::new(errors);
+        let response = crate::validation::extractors::ValidationErrorResponse::new(
+            errors,
+            uuid::Uuid::new_v4().to_string(),
+        );
         assert_eq!(response.error_code, "BAD_REQUEST");
         assert_eq!(response.details["reason"], "VALIDATION_ERROR");
         assert_eq!(

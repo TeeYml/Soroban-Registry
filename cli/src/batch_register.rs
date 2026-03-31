@@ -98,7 +98,9 @@ pub async fn run_batch_register(
     let resolved_publisher = publisher
         .map(|s| s.to_string())
         .or(manifest.publisher.clone())
-        .context("Publisher address is required. Pass --publisher or set `publisher` in the manifest.")?;
+        .context(
+            "Publisher address is required. Pass --publisher or set `publisher` in the manifest.",
+        )?;
 
     // 3. Resolve and validate all entries before submitting anything
     let entries = resolve_entries(&manifest, &resolved_publisher)?;
@@ -157,9 +159,9 @@ fn load_manifest(path: &str) -> Result<RegisterManifest> {
 
     match ext.as_str() {
         "yaml" | "yml" | "json" => {}
-        other => anyhow::bail!(
-            "Unsupported manifest extension '.{other}'. Use .yaml, .yml, or .json."
-        ),
+        other => {
+            anyhow::bail!("Unsupported manifest extension '.{other}'. Use .yaml, .yml, or .json.")
+        }
     }
 
     let content = std::fs::read_to_string(path)
@@ -180,10 +182,7 @@ struct ResolvedEntry {
     payload: RegisterPayload,
 }
 
-fn resolve_entries(
-    manifest: &RegisterManifest,
-    publisher: &str,
-) -> Result<Vec<ResolvedEntry>> {
+fn resolve_entries(manifest: &RegisterManifest, publisher: &str) -> Result<Vec<ResolvedEntry>> {
     let default_network = manifest
         .network
         .as_deref()
@@ -275,11 +274,7 @@ fn validate_all(entries: &[ResolvedEntry]) -> Result<()> {
 
 // ── Dry-run output ────────────────────────────────────────────────────────────
 
-fn emit_dry_run(
-    entries: Vec<ResolvedEntry>,
-    skipped_duplicates: usize,
-    json: bool,
-) -> Result<()> {
+fn emit_dry_run(entries: Vec<ResolvedEntry>, skipped_duplicates: usize, json: bool) -> Result<()> {
     let results: Vec<RegistrationResult> = entries
         .iter()
         .map(|e| RegistrationResult {
@@ -304,7 +299,12 @@ fn emit_dry_run(
         return Ok(());
     }
 
-    println!("\n{}", "Dry-run results (no contracts were registered):".bold().yellow());
+    println!(
+        "\n{}",
+        "Dry-run results (no contracts were registered):"
+            .bold()
+            .yellow()
+    );
     println!("{}", "=".repeat(60).yellow());
     for r in &summary.results {
         println!(
@@ -423,7 +423,10 @@ async fn register_one(
         anyhow::bail!("HTTP {}: {}", status, body);
     }
 
-    let body: serde_json::Value = response.json().await.context("Invalid JSON from registry")?;
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .context("Invalid JSON from registry")?;
     let registry_id = body["id"]
         .as_str()
         .or_else(|| body["contract_id"].as_str())
@@ -463,7 +466,11 @@ fn print_header(
         );
     }
     println!("  {}: {}", "Publisher".bold(), publisher.bright_black());
-    println!("  {}: {}s per contract", "Timeout".bold(), REGISTER_TIMEOUT_SECS);
+    println!(
+        "  {}: {}s per contract",
+        "Timeout".bold(),
+        REGISTER_TIMEOUT_SECS
+    );
     println!();
 }
 
@@ -474,11 +481,19 @@ fn print_summary(summary: &RegistrationSummary) {
     let reg_str = format!("{} registered", summary.registered).green();
     let fail_str = format!("{} failed", summary.failed).red();
     let skip_str = if summary.skipped > 0 {
-        format!(", {} skipped", summary.skipped).bright_black().to_string()
+        format!(", {} skipped", summary.skipped)
+            .bright_black()
+            .to_string()
     } else {
         String::new()
     };
-    println!("  {} — {}, {}{}", "Summary".bold(), reg_str, fail_str, skip_str);
+    println!(
+        "  {} — {}, {}{}",
+        "Summary".bold(),
+        reg_str,
+        fail_str,
+        skip_str
+    );
     println!();
 
     if summary.failed == 0 {
@@ -550,7 +565,11 @@ mod tests {
         assert_eq!(deduped.len(), 2);
         assert_eq!(skipped, 1);
         assert!(deduped.iter().all(|e| e.payload.contract_id != "CA1"
-            || deduped.iter().filter(|x| x.payload.contract_id == "CA1").count() == 1));
+            || deduped
+                .iter()
+                .filter(|x| x.payload.contract_id == "CA1")
+                .count()
+                == 1));
     }
 
     #[test]
@@ -601,7 +620,10 @@ mod tests {
     fn load_manifest_rejects_unknown_extension() {
         let result = load_manifest("/tmp/contracts.csv");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unsupported manifest extension"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported manifest extension"));
     }
 
     #[test]

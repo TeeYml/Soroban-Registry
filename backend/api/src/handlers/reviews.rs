@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTRACT REVIEW SYSTEM HANDLERS
 // ═══════════════════════════════════════════════════════════════════════════
-// 
+//
 // This module implements the complete review system for contracts:
 // - Submit reviews (POST /contracts/:id/reviews)
 // - Fetch reviews with sorting (GET /contracts/:id/reviews)
@@ -29,7 +29,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::{
@@ -40,6 +40,7 @@ use crate::{
         ModerateReviewRequest, RatingDistribution, ReviewResponse, ReviewSortBy, ReviewStatus,
         ReviewVoteRequest, ReviewVoteResponse,
     },
+    state::AppState,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -67,7 +68,7 @@ pub struct CreateReviewQuery {
 }
 
 pub async fn create_review(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(contract_id): Path<Uuid>,
     Query(query_params): Query<CreateReviewQuery>,
     claims: AuthClaims,
@@ -82,16 +83,15 @@ pub async fn create_review(
     }
 
     // Verify contract exists
-    let contract_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM contracts WHERE id = $1)",
-    )
-    .bind(contract_id)
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = ?e, "database error checking contract existence");
-        ApiError::internal("Failed to verify contract existence")
-    })?;
+    let contract_exists =
+        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM contracts WHERE id = $1)")
+            .bind(contract_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = ?e, "database error checking contract existence");
+                ApiError::internal("Failed to verify contract existence")
+            })?;
 
     if !contract_exists {
         return Err(ApiError::not_found(
@@ -112,7 +112,7 @@ pub async fn create_review(
             "#,
         )
         .bind(&claims.sub)
-        .fetch_one(&pool)
+        .fetch_one(&state.db)
         .await
         .map_err(|e| {
             tracing::error!(error = ?e, "database error checking verified status");
@@ -121,8 +121,7 @@ pub async fn create_review(
 
         if !has_verified {
             return Err(ApiError::forbidden(
-                "VerifiedUserRequired",
-                "Only users with verified contracts can submit reviews".to_string(),
+                "Only users with verified contracts can submit reviews",
             ));
         }
     }
@@ -132,7 +131,7 @@ pub async fn create_review(
         "SELECT id FROM publishers WHERE stellar_address = $1",
     )
     .bind(&claims.sub)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error fetching publisher");
@@ -155,7 +154,7 @@ pub async fn create_review(
     )
     .bind(contract_id)
     .bind(user_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error checking duplicate review");
@@ -194,7 +193,7 @@ pub async fn create_review(
     .bind(&payload.version)
     .bind(payload.rating)
     .bind(&payload.review_text)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error creating review");
@@ -227,12 +226,12 @@ pub async fn create_review(
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub async fn get_reviews(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(contract_id): Path<Uuid>,
     Query(query): Query<GetReviewsQuery>,
 ) -> ApiResult<Json<Vec<ReviewResponse>>> {
     // Validate limit (max 100 to prevent abuse)
-    let limit = query.limit.min(100).max(1);
+    let limit = query.limit.clamp(1, 100);
 
     // Build ORDER BY clause based on sort_by parameter
     let order_clause = match query.sort_by {
@@ -270,7 +269,7 @@ pub async fn get_reviews(
         .bind(contract_id)
         .bind(limit)
         .bind(query.offset)
-        .fetch_all(&pool)
+        .fetch_all(&state.db)
         .await
         .map_err(|e| {
             tracing::error!(error = ?e, contract_id = %contract_id, "database error fetching reviews");
@@ -291,7 +290,7 @@ pub async fn get_reviews(
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub async fn vote_review(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path((contract_id, review_id)): Path<(Uuid, i32)>,
     claims: AuthClaims,
     Json(payload): Json<ReviewVoteRequest>,
@@ -302,7 +301,7 @@ pub async fn vote_review(
     )
     .bind(review_id)
     .bind(contract_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error checking review existence");
@@ -321,7 +320,7 @@ pub async fn vote_review(
         "SELECT id FROM publishers WHERE stellar_address = $1",
     )
     .bind(&claims.sub)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error fetching publisher");
@@ -340,7 +339,7 @@ pub async fn vote_review(
     let user_id = user_id.unwrap();
 
     // Start a transaction to ensure and update vote
-    let mut tx = pool.begin().await.map_err(|e| {
+    let mut tx = state.db.begin().await.map_err(|e| {
         tracing::error!(error = ?e, "failed to start transaction");
         ApiError::internal("Failed to start database transaction")
     })?;
@@ -391,18 +390,16 @@ pub async fn vote_review(
         }
     } else {
         // Insert new vote
-        sqlx::query(
-            "INSERT INTO review_votes (review_id, user_id, vote) VALUES ($1, $2, $3)",
-        )
-        .bind(review_id)
-        .bind(user_id)
-        .bind(payload.helpful)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = ?e, "database error inserting vote");
-            ApiError::internal("Failed to insert vote")
-        })?;
+        sqlx::query("INSERT INTO review_votes (review_id, user_id, vote) VALUES ($1, $2, $3)")
+            .bind(review_id)
+            .bind(user_id)
+            .bind(payload.helpful)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = ?e, "database error inserting vote");
+                ApiError::internal("Failed to insert vote")
+            })?;
 
         // Update helpful_count: +1 for helpful, 0 for unhelpful (unhelpful doesn't decrease)
         if payload.helpful {
@@ -425,16 +422,15 @@ pub async fn vote_review(
     })?;
 
     // Fetch updated helpful_count
-    let helpful_count = sqlx::query_scalar::<_, i32>(
-        "SELECT helpful_count FROM reviews WHERE id = $1",
-    )
-    .bind(review_id)
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = ?e, "database error fetching helpful count");
-        ApiError::internal("Failed to fetch updated helpful count")
-    })?;
+    let helpful_count =
+        sqlx::query_scalar::<_, i32>("SELECT helpful_count FROM reviews WHERE id = $1")
+            .bind(review_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = ?e, "database error fetching helpful count");
+                ApiError::internal("Failed to fetch updated helpful count")
+            })?;
 
     Ok(Json(ReviewVoteResponse {
         review_id,
@@ -454,7 +450,7 @@ pub async fn vote_review(
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub async fn flag_review(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path((contract_id, review_id)): Path<(Uuid, i32)>,
     claims: AuthClaims,
     Json(payload): Json<FlagReviewRequest>,
@@ -465,7 +461,7 @@ pub async fn flag_review(
     )
     .bind(review_id)
     .bind(contract_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error checking review existence");
@@ -484,7 +480,7 @@ pub async fn flag_review(
         "SELECT id FROM publishers WHERE stellar_address = $1",
     )
     .bind(&claims.sub)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error fetching publisher");
@@ -506,7 +502,7 @@ pub async fn flag_review(
     )
     .bind(review_id)
     .bind(user_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error checking existing flag");
@@ -527,7 +523,7 @@ pub async fn flag_review(
     .bind(review_id)
     .bind(user_id)
     .bind(&payload.reason)
-    .execute(&pool)
+    .execute(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error inserting flag");
@@ -537,7 +533,7 @@ pub async fn flag_review(
     // Mark review as flagged
     sqlx::query("UPDATE reviews SET is_flagged = true WHERE id = $1")
         .bind(review_id)
-        .execute(&pool)
+        .execute(&state.db)
         .await
         .map_err(|e| {
             tracing::error!(error = ?e, "database error updating review flag status");
@@ -565,7 +561,7 @@ pub async fn flag_review(
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub async fn moderate_review(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path((contract_id, review_id)): Path<(Uuid, i32)>,
     claims: AuthClaims,
     Json(payload): Json<ModerateReviewRequest>,
@@ -573,8 +569,7 @@ pub async fn moderate_review(
     // Verify admin status
     if !claims.admin && claims.role.as_deref() != Some("admin") {
         return Err(ApiError::forbidden(
-            "AdminRequired",
-            "Only administrators can moderate reviews".to_string(),
+            "Only administrators can moderate reviews",
         ));
     }
 
@@ -596,7 +591,7 @@ pub async fn moderate_review(
     )
     .bind(review_id)
     .bind(contract_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error checking review existence");
@@ -632,7 +627,7 @@ pub async fn moderate_review(
     )
     .bind(&new_status)
     .bind(review_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, "database error updating review status");
@@ -643,7 +638,7 @@ pub async fn moderate_review(
     if new_status == ReviewStatus::Approved {
         sqlx::query("UPDATE review_flags SET resolved = true WHERE review_id = $1")
             .bind(review_id)
-            .execute(&pool)
+            .execute(&state.db)
             .await
             .ok(); // Don't fail if this fails
     }
@@ -675,7 +670,7 @@ pub async fn moderate_review(
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub async fn get_rating_stats(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(contract_id): Path<Uuid>,
 ) -> ApiResult<Json<ContractRatingStats>> {
     // Fetch aggregated stats in a single query
@@ -694,7 +689,7 @@ pub async fn get_rating_stats(
         "#,
     )
     .bind(contract_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| {
         tracing::error!(error = ?e, contract_id = %contract_id, "database error fetching rating stats");
@@ -732,18 +727,18 @@ pub async fn get_rating_stats(
 // HELPER: Get pending reviews count (for admin dashboard)
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[allow(dead_code)]
 pub async fn get_pending_reviews_count(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM reviews WHERE status = 'pending'",
-    )
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = ?e, "database error fetching pending reviews count");
-        ApiError::internal("Failed to fetch pending reviews count")
-    })?;
+    let count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reviews WHERE status = 'pending'")
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = ?e, "database error fetching pending reviews count");
+                ApiError::internal("Failed to fetch pending reviews count")
+            })?;
 
     Ok(Json(serde_json::json!({ "pending_reviews": count })))
 }

@@ -50,8 +50,11 @@ use crate::error::ApiError;
 const DEFAULT_ANON_LIMIT_PER_MINUTE: u32 = 100;
 const DEFAULT_AUTH_LIMIT_PER_MINUTE: u32 = 1_000;
 const DEFAULT_WINDOW_SECONDS: u64 = 60;
+#[allow(dead_code)]
 const DEFAULT_CONTRACTS_PAGE_SIZE: u32 = 50;
+#[allow(dead_code)]
 const MAX_CONTRACTS_PAGE_SIZE: u32 = 1000;
+#[allow(dead_code)]
 const ENDPOINT_LIMIT_ENV_PREFIX: &str = "RATE_LIMIT_ENDPOINT_";
 
 /// How often the background task sweeps for expired buckets.
@@ -182,8 +185,19 @@ impl RateLimitState {
             );
         }
 
+        let path = request.uri().path();
+        let query = request.uri().query();
+        let base_limit = self.config.anonymous_limit;
+        let limit = if let Some(page_size) =
+            contracts_page_size_rate_limit(request.method(), path, query)
+        {
+            scale_limit_by_page_size(base_limit, page_size)
+        } else {
+            base_limit
+        };
+
         (
-            self.config.anonymous_limit,
+            limit,
             BucketKey {
                 client_key: format!("anon:{}", extract_client_ip(request)),
             },
@@ -346,6 +360,7 @@ fn parse_ip_addr(raw: &str) -> Option<IpAddr> {
         .or_else(|| raw.parse::<SocketAddr>().ok().map(|addr| addr.ip()))
 }
 
+#[allow(dead_code)]
 fn is_write_method(method: &Method) -> bool {
     matches!(
         *method,
@@ -384,6 +399,7 @@ fn scale_limit_by_page_size(base_limit: u32, page_size: u32) -> u32 {
     (base_limit / weight).max(1)
 }
 
+#[allow(dead_code)]
 fn endpoint_key(method: &Method, path: &str) -> String {
     let normalized_path = path
         .chars()
@@ -713,7 +729,7 @@ mod tests {
 
     #[tokio::test]
     async fn contracts_rate_limit_scales_down_for_large_page_sizes() {
-        let app = test_app(100, 20, 10_000, Duration::from_secs(60));
+        let app = test_app(100, 20, Duration::from_secs(60));
         let ip = "198.51.100.77";
 
         for _ in 0..5 {

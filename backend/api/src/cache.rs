@@ -1,7 +1,10 @@
 use moka::future::Cache as MokaCache;
+use redis::aio::ConnectionManager;
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
+use redis::aio::ConnectionManager;
+
 
 /// Cache configuration options
 #[derive(Clone, Debug)]
@@ -59,7 +62,7 @@ pub struct CacheLayer {
     pub verification_cache: MokaCache<String, String>,
     pub generic_cache: MokaCache<String, String>,
     pub contract_access_cache: MokaCache<String, bool>,
-    pub config: CacheConfig,
+    config: CacheConfig,
     pub redis_cm: Option<ConnectionManager>,
 }
 
@@ -92,22 +95,18 @@ impl CacheLayer {
             .time_to_live(Duration::from_secs(60))
             .build();
 
-        // Initialize Redis connection manager if Redis is enabled
         let redis_cm = if config.redis_enabled {
-            if let Some(redis_url) = &config.redis_url {
-                match redis::Client::open(redis_url.as_str()) {
-                    Ok(client) => match ConnectionManager::new(client).await {
-                        Ok(cm) => {
-                            tracing::info!("Redis connection manager initialized");
-                            Some(cm)
-                        }
+            if let Some(url) = &config.redis_url {
+                match redis::Client::open(url.as_str()) {
+                    Ok(client) => match client.get_connection_manager().await {
+                        Ok(cm) => Some(cm),
                         Err(e) => {
-                            tracing::warn!("Failed to create Redis connection manager: {}", e);
+                            tracing::error!("Failed to get Redis connection manager: {}", e);
                             None
                         }
                     },
                     Err(e) => {
-                        tracing::warn!("Failed to create Redis client: {}", e);
+                        tracing::error!("Failed to open Redis client: {}", e);
                         None
                     }
                 }
@@ -125,9 +124,9 @@ impl CacheLayer {
             contract_access_cache,
             redis_cm,
             config,
-            redis_cm,
         }
     }
+
 
     pub fn config(&self) -> &CacheConfig {
         &self.config
@@ -157,9 +156,7 @@ impl CacheLayer {
         }
 
         // Put to L1 cache
-        self.abi_cache
-            .insert(contract_id.to_string(), abi)
-            .await;
+        self.abi_cache.insert(contract_id.to_string(), abi).await;
     }
 
     pub async fn invalidate_abi(&self, contract_id: &str) {
@@ -457,7 +454,8 @@ mod tests {
             max_capacity: 100,
             redis_enabled: false,
             redis_url: None,
-        }).await;
+        })
+        .await;
 
         assert!(cache.should_refresh_contract_access("contract-1").await);
         assert!(!cache.should_refresh_contract_access("contract-1").await);

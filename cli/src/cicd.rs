@@ -99,8 +99,12 @@ pub async fn run_pipeline(
         vec!["cicd".to_string(), "automated".to_string()],
         &publisher,
         true,
-    )
-    .await?;
+        contract_path,
+        None,
+        false,
+        0.0,
+        false,
+    ).await?;
 
     // Step 5: Verify
     if !json {

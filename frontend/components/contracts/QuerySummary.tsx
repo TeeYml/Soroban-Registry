@@ -30,31 +30,30 @@ const OP_LABELS: Record<FieldOperator, string> = {
 
 export default function QuerySummary({ query, className = '' }: QuerySummaryProps) {
   const renderNode = (node: QueryNode): string => {
-    if ('children' in node) {
-      const conditions = (node as any).children || (node as any).conditions || [];
+    if ('conditions' in node) {
+      const { conditions, operator } = node;
       if (conditions.length === 0) return '';
-      
-      const parts = conditions
-        .map((c: QueryNode) => renderNode(c))
-        .filter(Boolean);
-        
+
+      const parts = conditions.map((c) => renderNode(c)).filter(Boolean);
+
       if (parts.length === 1) return parts[0];
-      
-      const op = (node as any).operator || 'AND';
-      const joined = parts.join(` ${op} `);
+
+      const joined = parts.join(` ${operator} `);
       return `(${joined})`;
     }
 
-    const field = FIELD_LABELS[(node as any).field] || (node as any).field;
-    const op = OP_LABELS[(node as any).operator as FieldOperator] || (node as any).operator;
-    let val = (node as any).value;
-    
-    if ((node as any).field === 'verified') {
-      val = (node as any).value ? 'Verified' : 'Unverified';
-    } else if (Array.isArray((node as any).value)) {
-      val = `[${(node as any).value.join(', ')}]`;
-    } else if (typeof (node as any).value === 'string') {
-      val = `'${(node as any).value}'`;
+    const field = FIELD_LABELS[node.field] || node.field;
+    const op = OP_LABELS[node.operator] || node.operator;
+    let val: string;
+
+    if (node.field === 'verified') {
+      val = node.value ? 'Verified' : 'Unverified';
+    } else if (Array.isArray(node.value)) {
+      val = `[${node.value.join(', ')}]`;
+    } else if (typeof node.value === 'string') {
+      val = `'${node.value}'`;
+    } else {
+      val = String(node.value);
     }
 
     return `${field} ${op} ${val}`;

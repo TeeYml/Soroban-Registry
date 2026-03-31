@@ -71,6 +71,7 @@ impl DatabaseWriter {
         // Insert new contract with is_verified = false
         let contract_id = Uuid::new_v4();
         let now = chrono::Utc::now();
+        let slug = shared::slugify(&deployment.contract_id);
 
         sqlx::query(
             r#"
@@ -79,18 +80,20 @@ impl DatabaseWriter {
                 contract_id,
                 wasm_hash,
                 name,
+                slug,
                 publisher_id,
                 network,
                 is_verified,
                 created_at,
                 updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6::network_type, $7, $8, $9)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7::network_type, $8, $9, $10)
         "#,
         )
         .bind(contract_id)
         .bind(&deployment.contract_id)
         .bind(format!("{}_{}", deployment.contract_id, deployment.op_id))
         .bind(&deployment.contract_id)
+        .bind(slug)
         .bind(publisher_id)
         .bind(network_str)
         .bind(false)
@@ -201,17 +204,19 @@ impl DatabaseWriter {
         // 2. Batch insert contracts — ON CONFLICT DO NOTHING handles duplicates
         let mut query_builder: QueryBuilder<sqlx::Postgres> = QueryBuilder::new(
             "INSERT INTO contracts \
-             (id, contract_id, wasm_hash, name, publisher_id, network, \
+             (id, contract_id, wasm_hash, name, slug, publisher_id, network, \
               is_verified, created_at, updated_at) ",
         );
 
         query_builder.push_values(deployments.iter(), |mut b, deployment| {
             let publisher_id = publisher_map.get(deployment.deployer.as_str()).unwrap();
             let wasm_hash = format!("{}_{}", deployment.contract_id, deployment.op_id);
+            let slug = shared::slugify(&deployment.contract_id);
             b.push_bind(Uuid::new_v4())
                 .push_bind(&deployment.contract_id)
                 .push_bind(wasm_hash)
                 .push_bind(&deployment.contract_id)
+                .push_bind(slug)
                 .push_bind(publisher_id)
                 .push_bind(network_str)
                 .push_bind(false)
@@ -387,7 +392,7 @@ impl DatabaseWriter {
             r#"
             SELECT
                 id, contract_id, wasm_hash, name, description,
-                publisher_id, network, is_verified, category, tags,
+                publisher_id, network, is_verified, verification_status, verified_by, verification_notes, verified_at, category, tags,
                 created_at, updated_at
             FROM contracts
             WHERE network = $1::network_type AND is_verified = false

@@ -25,7 +25,10 @@ import {
   Code2,
   Layers,
   MessageSquare,
+  GitCompare,
+  Share2,
 } from "lucide-react";
+
 import Link from "next/link";
 import { useCopy } from "@/hooks/useCopy";
 import CodeCopyButton from "@/components/CodeCopyButton";
@@ -40,10 +43,23 @@ import DeprecationBanner from "@/components/DeprecationBanner";
 import ReleaseNotesPanel from "@/components/ReleaseNotesPanel";
 import ContractComments from "@/components/ContractComments";
 import { useContractAutoRefresh } from "@/hooks/useContractAutoRefresh";
+import ContractInteractionFlow from "@/components/contracts/ContractInteractionFlow";
+import ContractAbiMethodExplorer from "@/components/contracts/ContractAbiMethodExplorer";
+
 
 const NETWORKS: Network[] = ["mainnet", "testnet", "futurenet"];
-const TAB_IDS = ["overview", "abi", "source", "deployments", "analytics", "history", "discussion"] as const;
+const TAB_IDS = [
+  "overview",
+  "interactions",
+  "abi",
+  "source",
+  "deployments",
+  "analytics",
+  "history",
+  "discussion",
+] as const;
 type TabId = (typeof TAB_IDS)[number];
+
 
 // TODO: Replace with real API call when maintenance endpoint is available
 const maintenanceStatus: { is_maintenance: boolean; current_window: null } = {
@@ -182,8 +198,12 @@ function ContractDetailsContent() {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [tabSearch, setTabSearch] = useState("");
 
-  const tabMeta: Record<TabId, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
+  const tabMeta: Record<
+    TabId,
+    { label: string; icon: React.ComponentType<{ className?: string }> }
+  > = {
     overview: { label: "Overview", icon: Layers },
+    interactions: { label: "Interactions", icon: Share2 },
     abi: { label: "ABI", icon: Database },
     source: { label: "Source Code", icon: Code2 },
     deployments: { label: "Deployments", icon: Globe },
@@ -191,6 +211,7 @@ function ContractDetailsContent() {
     history: { label: "History", icon: History },
     discussion: { label: "Discussion", icon: MessageSquare },
   };
+
 
   // Subscribe to real-time contract updates
   useContractAutoRefresh(id);
@@ -409,7 +430,13 @@ function ContractDetailsContent() {
           </div>
 
           <div className="flex gap-2">
-            {/* Publisher actions/links could go here */}
+            <Link
+              href={`/contracts/${id}/compatibility`}
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <GitCompare className="h-4 w-4" />
+              Interoperability
+            </Link>
           </div>
         </div>
 
@@ -487,30 +514,10 @@ function ContractDetailsContent() {
         {activeTab === "overview" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
-              {depsLoading ? (
-                <section className="bg-card rounded-2xl p-8 border border-border">
-                  <div className="animate-pulse space-y-4">
-                    <div className="h-8 bg-muted rounded w-1/3" />
-                    <div className="h-96 bg-muted rounded-lg" />
-                  </div>
-                </section>
-              ) : depGraph && depGraph.nodes.length > 0 ? (
-                <section className="bg-card rounded-2xl border border-border p-4 md:p-6">
-                  <h2 className="text-xl font-semibold text-foreground mb-4">Dependency Graph</h2>
-                  <div className="h-[520px]">
-                    <DependencyGraph nodes={depGraph.nodes} edges={depGraph.edges} searchQuery={tabSearch} />
-                  </div>
-                </section>
-              ) : (
-                <section className="bg-card rounded-2xl border border-border p-6">
-                  <h2 className="text-xl font-semibold text-foreground mb-2">Dependency Graph</h2>
-                  <p className="text-sm text-muted-foreground">No dependency graph available for this contract.</p>
-                </section>
-              )}
-
               <section>
                 <ExampleGallery contractId={contract.id} />
               </section>
+
             </div>
 
             <div className="space-y-6">
@@ -555,22 +562,58 @@ function ContractDetailsContent() {
           </div>
         )}
 
+        {activeTab === "interactions" && (
+          <div className="space-y-6">
+            <section className="bg-card rounded-2xl border border-border p-6">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-semibold text-foreground">Interaction Flow Diagram</h2>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="w-3 h-3 rounded-full bg-primary/20 border border-primary/50" />
+                  <span>Interactive Flow</span>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">
+                Explore the cross-contract call graph centered on this contract. Zoom, pan, and filter to understand complex relationships.
+              </p>
+              <ContractInteractionFlow contractId={id} />
+            </section>
+          </div>
+        )}
+
         {activeTab === "abi" && (
-          <section className="bg-card rounded-2xl border border-border p-6 space-y-4">
-            <h2 className="text-xl font-semibold text-foreground">ABI</h2>
+          <section className="bg-card rounded-2xl border border-border p-6 space-y-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">ABI Method Explorer</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Browse contract methods, input parameters, simulate calls, and copy SDK snippets.
+                </p>
+              </div>
+              {abiResponse?.abi != null && (
+                <details className="flex-shrink-0">
+                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors select-none">
+                    View raw JSON
+                  </summary>
+                  <div className="absolute right-6 z-20 mt-2 w-[min(600px,90vw)] max-h-96 overflow-auto rounded-xl border border-border bg-zinc-950 p-4 shadow-2xl">
+                    <pre className="text-[11px] leading-5 text-zinc-300 font-mono">
+                      {JSON.stringify(abiResponse.abi, null, 2)}
+                    </pre>
+                  </div>
+                </details>
+              )}
+            </div>
+
             {abiLoading ? (
-              <div className="h-64 animate-pulse bg-muted rounded" />
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-14 animate-pulse bg-muted rounded-xl" />
+                ))}
+              </div>
             ) : (
-              <pre className="overflow-x-auto rounded-xl border border-border bg-background p-4 text-xs leading-6">
-                {JSON.stringify(abiResponse?.abi ?? {}, null, 2)
-                  .split("\n")
-                  .filter((line) => !loweredSearch || line.toLowerCase().includes(loweredSearch))
-                  .map((line, idx) => (
-                    <div key={`${idx}-${line.slice(0, 12)}`}>
-                      {line || " "}
-                    </div>
-                  ))}
-              </pre>
+              <ContractAbiMethodExplorer
+                abi={abiResponse?.abi}
+                contractId={displayContractId}
+              />
             )}
           </section>
         )}
@@ -663,7 +706,16 @@ function ContractDetailsContent() {
         {activeTab === "history" && (
           <div className="space-y-6">
             <section className="bg-card rounded-2xl border border-border p-6 space-y-4">
-              <h2 className="text-xl font-semibold text-foreground">Update History</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold text-foreground">Update History</h2>
+                <Link
+                  href={`/contracts/${id}/diff`}
+                  className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                >
+                  <GitCompareIcon size={14} />
+                  View code diff
+                </Link>
+              </div>
               <div className="space-y-3">
                 {filteredHistory.map((entry: ContractChangelogEntry) => (
                   <article key={`${entry.version}-${entry.created_at}`} className="rounded-xl border border-border p-4 bg-background">

@@ -229,6 +229,38 @@ export interface Publisher {
   created_at: string;
 }
 
+export type AnalyticsEventType = 
+  | 'contract_published' 
+  | 'contract_verified' 
+  | 'contract_deployed' 
+  | 'version_created' 
+  | 'contract_updated' 
+  | 'publisher_created' 
+  | 'search_click';
+
+export interface AnalyticsEvent {
+  id: string;
+  event_type: AnalyticsEventType;
+  contract_id: string;
+  user_address: string | null;
+  network: Network | null;
+  metadata: any;
+  created_at: string;
+}
+
+export interface ActivityFeedParams {
+  cursor?: string;
+  limit?: number;
+  event_type?: AnalyticsEventType;
+}
+
+export interface ActivityFeedResponse {
+  items: AnalyticsEvent[];
+  total: number;
+  limit: number;
+  next_cursor: string | null;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -807,12 +839,24 @@ export const api = {
     );
   },
 
+
   async getContractDependencies(id: string): Promise<DependencyTreeNode[]> {
     return handleApiCall<DependencyTreeNode[]>(
       () => fetch(`${API_URL}/api/contracts/${id}/dependencies`),
       `/api/contracts/${id}/dependencies`
     );
   },
+
+  async getContractLocalGraph(id: string, depth?: number): Promise<GraphResponse> {
+    const search = new URLSearchParams();
+    if (depth != null) search.set("depth", String(depth));
+    const qs = search.toString();
+    return handleApiCall<GraphResponse>(
+      () => fetch(`${API_URL}/api/contracts/${id}/graph${qs ? `?${qs}` : ""}`),
+      `/api/contracts/${id}/graph`
+    );
+  },
+
 
   async getContractInteractions(
     id: string,
@@ -837,6 +881,49 @@ export const api = {
     const response = await fetch(`${API_URL}/api/contracts/${id}/analytics`);
     if (!response.ok) throw new Error("Failed to fetch contract analytics");
     return response.json();
+  },
+
+  async getActivityFeed(params?: ActivityFeedParams): Promise<ActivityFeedResponse> {
+    if (USE_MOCKS) {
+      // Basic mock for activity feed
+      const items: AnalyticsEvent[] = [
+        {
+          id: '1',
+          event_type: 'contract_published',
+          contract_id: 'C123...',
+          user_address: 'G...123',
+          network: 'testnet',
+          metadata: { name: 'SorobanToken' },
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: '2',
+          event_type: 'contract_verified',
+          contract_id: 'C456...',
+          user_address: 'G...456',
+          network: 'mainnet',
+          metadata: { name: 'BridgeContract' },
+          created_at: new Date(Date.now() - 3600000).toISOString(),
+        }
+      ];
+      return {
+        items,
+        total: items.length,
+        limit: params?.limit ?? 20,
+        next_cursor: null,
+      };
+    }
+
+    const search = new URLSearchParams();
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit != null) search.set("limit", String(params.limit));
+    if (params?.event_type) search.set("event_type", params.event_type);
+
+    const qs = search.toString();
+    return handleApiCall<ActivityFeedResponse>(
+      () => fetch(`${API_URL}/api/activity-feed${qs ? `?${qs}` : ""}`),
+      "/api/activity-feed"
+    );
   },
 
   async getContractRecommendations(
@@ -1070,9 +1157,9 @@ export const api = {
     );
   },
 
-  // Compatibility endpoints
-  async getCompatibility(id: string): Promise<CompatibilityMatrix> {
-    return handleApiCall<CompatibilityMatrix>(
+  // Interoperability analysis endpoint
+  async getCompatibility(id: string): Promise<ContractInteroperabilityResponse> {
+    return handleApiCall<ContractInteroperabilityResponse>(
       () => fetch(`${API_URL}/api/contracts/${id}/compatibility`),
       `/api/contracts/${id}/compatibility`
     );
@@ -1486,6 +1573,68 @@ export interface ExampleRating {
   created_at: string;
 }
 
+export type ProtocolComplianceStatus = 'compliant' | 'partial' | 'unsupported';
+
+export type InteroperabilityCapabilityKind = 'bridge' | 'adapter';
+
+export interface InteroperabilityProtocolMatch {
+  slug: string;
+  name: string;
+  description: string;
+  status: ProtocolComplianceStatus;
+  matched_functions: string[];
+  missing_functions: string[];
+  optional_matches: string[];
+  compliance_score: number;
+}
+
+export interface InteroperabilityCapability {
+  kind: InteroperabilityCapabilityKind;
+  label: string;
+  confidence: number;
+  evidence: string[];
+}
+
+export interface InteroperabilitySuggestion {
+  contract_id: string;
+  contract_address: string;
+  contract_name: string;
+  network: Network;
+  category?: string;
+  is_verified: boolean;
+  score: number;
+  reason: string;
+  shared_protocols: string[];
+  shared_functions: string[];
+  relation_types: string[];
+}
+
+export interface InteroperabilitySummary {
+  protocol_matches: number;
+  compatible_contracts: number;
+  suggested_contracts: number;
+  graph_nodes: number;
+  graph_edges: number;
+  bridge_signals: number;
+  adapter_signals: number;
+}
+
+export interface ContractInteroperabilityResponse {
+  contract_id: string;
+  contract_address: string;
+  contract_name: string;
+  network: Network;
+  analyzed_at: string;
+  has_abi: boolean;
+  analyzed_functions: string[];
+  warnings: string[];
+  protocols: InteroperabilityProtocolMatch[];
+  capabilities: InteroperabilityCapability[];
+  suggestions: InteroperabilitySuggestion[];
+  graph: GraphResponse;
+  summary: InteroperabilitySummary;
+}
+
 // ─── Compatibility Matrix ────────────────────────────────────────────────────
 
 export interface CompatibilityEntry {
@@ -1497,7 +1646,7 @@ export interface CompatibilityEntry {
   is_compatible: boolean;
 }
 
-/** Shape returned by GET /api/contracts/:id/compatibility */
+/** Legacy compatibility matrix shape retained for matrix/export workflows. */
 export interface CompatibilityMatrix {
   contract_id: string;
   /** Keyed by source version string */

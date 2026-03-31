@@ -18,9 +18,17 @@ pub async fn get_contract_dependencies(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<DependencyResponse>> {
+    let response = get_contract_dependencies_internal(&state, id).await?;
+    Ok(Json(response))
+}
+
+pub(crate) async fn get_contract_dependencies_internal(
+    state: &AppState,
+    id: Uuid,
+) -> ApiResult<DependencyResponse> {
     // 1. Fetch the root contract
     let root_contract =
-        sqlx::query("SELECT id, contract_id, name, is_verified FROM contracts WHERE id = $1")
+        sqlx::query("SELECT id, contract_id, name, verification_status FROM contracts WHERE id = $1")
             .bind(id)
             .fetch_optional(&state.db)
             .await
@@ -30,14 +38,10 @@ pub async fn get_contract_dependencies(
     let root_internal_id: Uuid = root_contract.get("id");
     let root_c_id: String = root_contract.get("contract_id");
     let root_name: String = root_contract.get("name");
-    let is_verified: bool = root_contract.get("is_verified");
+    let verification_status: String = root_contract.get("verification_status");
 
-    // Default status for root
-    let root_status = if is_verified {
-        "verified"
-    } else {
-        "unverified"
-    };
+    // Default status for root (string form)
+    let root_status = verification_status;
 
     // 2. Build the tree using DFS and a visited set to detect circular references
     let mut visited = HashSet::new();
@@ -112,7 +116,7 @@ async fn build_dependency_tree(
             cd.call_volume,
             c.id as resolved_id,
             c.name as resolved_name,
-            c.is_verified
+            c.verification_status as verification_status
         FROM contract_dependencies cd
         LEFT JOIN contracts c ON c.contract_id = cd.callee_contract_id
         WHERE cd.caller_id = $1
@@ -133,14 +137,14 @@ async fn build_dependency_tree(
         let call_volume: i32 = row.get("call_volume");
         let resolved_id: Option<Uuid> = row.get("resolved_id");
         let resolved_name: Option<String> = row.get("resolved_name");
-        let is_verified: Option<bool> = row.get("is_verified");
+        let verification_status: Option<String> = row.get("verification_status");
 
-        let status = if let Some(true) = is_verified {
-            "verified"
+        let status = if let Some(s) = verification_status.clone() {
+            s
         } else if resolved_id.is_some() {
-            "unverified"
+            "unverified".to_string()
         } else {
-            "unknown"
+            "unknown".to_string()
         };
 
         let mut is_circular = false;
@@ -178,7 +182,6 @@ async fn build_dependency_tree(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::HashSet;
     use uuid::Uuid;
 

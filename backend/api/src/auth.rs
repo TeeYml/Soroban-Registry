@@ -1,4 +1,6 @@
-use axum::{extract::Request, http::header, http::StatusCode, middleware::Next, response::Response};
+use axum::{
+    extract::Request, http::header, http::StatusCode, middleware::Next, response::Response,
+};
 use chrono::{Duration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
