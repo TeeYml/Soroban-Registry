@@ -25,9 +25,5 @@ export function useTheme() {
     };
   }
 
-  return {
-    theme: 'system' as Theme,
-    setTheme: () => undefined,
-    resolvedTheme: 'light' as const,
-  };
+  return context;
 }
