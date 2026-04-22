@@ -61,8 +61,13 @@ mod simulation;
 mod simulation_handlers;
 mod state;
 
+mod clone_federation_handlers;
+mod gas_estimation_handlers;
+mod security_scan_handlers;
+mod subscription_handlers;
 mod type_safety;
 mod validation;
+mod webhook_delivery;
 mod websocket;
 
 use anyhow::Result;
@@ -191,6 +196,9 @@ async fn main() -> Result<()> {
     // Initialize GraphQL schema
     let schema = graphql::schema::build_schema(state.clone());
 
+    // Spawn webhook delivery background task
+    webhook_delivery::spawn_webhook_delivery_task(pool.clone());
+
     // Spawn the background DB and cache monitoring task
     db_monitoring::spawn_db_monitoring_task(pool.clone(), state.cache.clone());
 
@@ -271,6 +279,7 @@ async fn main() -> Result<()> {
         .merge(multisig_routes::routes())
         .merge(routes::observability_routes())
         .merge(routes::websocket_routes())
+        .merge(routes::subscription_routes())
         .merge(routes::validator_routes())
         .merge(release_notes_routes::release_notes_routes())
         .route("/api/graphql", axum::routing::post(graphql::graphql_handler).with_state(schema))

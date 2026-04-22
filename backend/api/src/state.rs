@@ -3,16 +3,13 @@ use crate::cache::{CacheConfig, CacheLayer};
 use crate::contract_events::ContractEventHub;
 use crate::health_monitor::HealthMonitorStatus;
 use crate::resource_tracking::ResourceManager;
-use shared::error::Result;
 use shared::source_storage::SourceStorage;
 
 use prometheus::Registry;
-use shared::source_storage::SourceStorage;
 use sqlx::PgPool;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-
 
 use tokio::sync::broadcast;
 
@@ -55,10 +52,7 @@ pub struct AppState {
     pub resource_mgr: Arc<RwLock<ResourceManager>>,
     pub source_storage: Arc<SourceStorage>,
     pub event_broadcaster: broadcast::Sender<RealtimeEvent>,
-    pub contract_events: Arc<ContractEventHub>,
-    pub source_storage: Arc<shared::source_storage::SourceStorage>,
 }
-
 
 impl AppState {
     pub async fn new(
@@ -88,12 +82,6 @@ impl AppState {
             resource_mgr,
             source_storage,
             event_broadcaster,
-            contract_events: Arc::new(ContractEventHub::from_env()),
-            source_storage: Arc::new(
-                shared::source_storage::SourceStorage::new()
-                    .await
-                    .expect("source storage init"),
-            ),
         })
     }
 }

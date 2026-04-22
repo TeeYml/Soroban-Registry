@@ -486,10 +486,6 @@ pub fn compatibility_dashboard_routes() -> Router<AppState> {
     )
 }
 
-pub fn category_routes() -> Router<AppState> {
-    Router::new().route("/api/categories", get(category_handlers::list_categories))
-}
-
 pub fn canary_routes() -> Router<AppState> {
     Router::new()
         // Contract-scoped canary endpoints
@@ -660,10 +656,9 @@ pub fn federation_routes() -> Router<AppState> {
 }
 
 pub fn websocket_routes() -> Router<AppState> {
-    Router::new().route(
-        "/ws/contracts",
-        axum::routing::get(websocket::websocket_handler),
-    )
+    // /ws/contracts is registered in contract_routes via contract_events::contracts_websocket.
+    // This function is retained so main.rs can call it without a merge conflict.
+    Router::new()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -758,5 +753,17 @@ pub fn subscription_routes() -> Router<AppState> {
         .route(
             "/api/webhooks/:id",
             delete(subscription_handlers::delete_webhook),
+        )
+        .route(
+            "/api/webhooks/:id/deliveries",
+            get(subscription_handlers::get_webhook_deliveries),
+        )
+        .route(
+            "/api/webhooks/:id/test",
+            post(subscription_handlers::test_webhook),
+        )
+        .route(
+            "/api/webhook-deliveries/:id/retry",
+            post(subscription_handlers::retry_webhook_delivery),
         )
 }
