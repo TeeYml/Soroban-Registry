@@ -2012,6 +2012,7 @@ pub struct DailyAggregate {
     pub verification_count: i32,
     pub publish_count: i32,
     pub version_count: i32,
+    pub update_count: i32,
     pub total_events: i32,
     pub unique_users: i32,
     pub network_breakdown: serde_json::Value,

@@ -14,6 +14,7 @@ mod contract_events;
 mod contributor_handlers;
 mod db_monitoring;
 mod graphql;
+mod governance_handlers;
 mod interoperability;
 mod interoperability_handlers;
 
@@ -264,6 +265,7 @@ async fn main() -> Result<()> {
         .merge(routes::admin_routes())
         .merge(routes::category_routes())
         .merge(routes::compatibility_dashboard_routes())
+        .merge(routes::governance_routes())
         .merge(routes::canary_routes())
         .merge(routes::ab_test_routes())
         .merge(routes::performance_routes())

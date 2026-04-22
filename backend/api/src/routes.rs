@@ -4,8 +4,9 @@ use crate::{
     ab_test_handlers, analytics_handlers, auth, auth_handlers, batch_verify_handlers,
     breaking_changes, canary_handlers, category_handlers, clone_federation_handlers,
     compatibility_testing_handlers, contract_events, custom_metrics_handlers,
-    deprecation_handlers, handlers, interoperability_handlers, metrics_handler,
-    migration_handlers, org_handlers, performance_handlers, resource_handlers,
+    deprecation_handlers, gas_estimation_handlers, governance_handlers, handlers,
+    interoperability_handlers, metrics_handler, migration_handlers, org_handlers,
+    patch_handlers, performance_handlers, recommendation_handlers, resource_handlers,
     security_scan_handlers, similarity_handlers, simulation_handlers, state::AppState,
     subscription_handlers, websocket,
 };
@@ -72,6 +73,10 @@ pub fn contract_routes() -> Router<AppState> {
         )
         .route(
             "/api/contracts/trending",
+            get(handlers::get_trending_contracts),
+        )
+        .route(
+            "/contracts/trending",
             get(handlers::get_trending_contracts),
         )
         .route("/api/contracts/batch", post(handlers::get_contracts_batch))
@@ -215,7 +220,15 @@ pub fn contract_routes() -> Router<AppState> {
             get(recommendation_handlers::get_contract_recommendations),
         )
         .route(
+            "/api/contracts/:id/related",
+            get(recommendation_handlers::get_contract_recommendations),
+        )
+        .route(
             "/contracts/:id/recommendations",
+            get(recommendation_handlers::get_contract_recommendations),
+        )
+        .route(
+            "/contracts/:id/related",
             get(recommendation_handlers::get_contract_recommendations),
         )
         .route(
@@ -429,6 +442,35 @@ pub fn health_routes() -> Router<AppState> {
         .route(
             "/api/analytics/summary",
             get(analytics_handlers::get_analytics_summary),
+        )
+        .route(
+            "/api/analytics/timeseries",
+            get(analytics_handlers::get_analytics_timeseries),
+        )
+}
+
+pub fn governance_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/api/governance/proposals",
+            post(governance_handlers::create_proposal).get(governance_handlers::list_proposals),
+        )
+        .route(
+            "/api/governance/proposals/:id",
+            get(governance_handlers::get_proposal),
+        )
+        .route(
+            "/api/governance/proposals/:id/votes",
+            post(governance_handlers::cast_vote).get(governance_handlers::get_vote_tally),
+        )
+        .route(
+            "/api/governance/proposals/:id/execute",
+            post(governance_handlers::execute_proposal),
+        )
+        .route(
+            "/api/governance/contracts/:id/voting-rights",
+            get(governance_handlers::list_voting_rights)
+                .post(governance_handlers::upsert_voting_rights),
         )
 }
 

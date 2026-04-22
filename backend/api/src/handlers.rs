@@ -187,6 +187,89 @@ pub(crate) async fn fetch_contract_identity(
     Ok((uuid, contract_id))
 }
 
+#[derive(Debug, sqlx::FromRow)]
+struct MultisigProposalValidation {
+    contract_id: String,
+    status: String,
+    expires_at: chrono::DateTime<chrono::Utc>,
+    required_approvals: i32,
+    approved_signatures: i64,
+}
+
+async fn require_multisig_approval_for_sensitive_update(
+    state: &AppState,
+    headers: &HeaderMap,
+    contract: &Contract,
+    action_label: &str,
+) -> ApiResult<()> {
+    let proposal_id = headers
+        .get("x-multisig-proposal-id")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            ApiError::forbidden_with_error(
+                "MultisigRequired",
+                format!(
+                    "{} requires multisig approval; include x-multisig-proposal-id",
+                    action_label
+                ),
+            )
+        })
+        .and_then(|raw| {
+            Uuid::parse_str(raw)
+                .map_err(|_| ApiError::bad_request("InvalidProposalId", "invalid proposal id"))
+        })?;
+
+    let proposal = sqlx::query_as::<_, MultisigProposalValidation>(
+        "SELECT
+            p.contract_id,
+            p.status::text AS status,
+            p.expires_at,
+            p.required_approvals,
+            COALESCE((
+                SELECT COUNT(*)
+                FROM proposal_signatures s
+                WHERE s.proposal_id = p.id AND s.decision = 'approved'
+            ), 0)::BIGINT AS approved_signatures
+         FROM deploy_proposals p
+         WHERE p.id = $1",
+    )
+    .bind(proposal_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|err| db_internal_error("validate multisig proposal", err))?
+    .ok_or_else(|| ApiError::not_found("ProposalNotFound", "multisig proposal not found"))?;
+
+    if proposal.contract_id != contract.contract_id {
+        return Err(ApiError::conflict(
+            "ProposalContractMismatch",
+            "multisig proposal does not match this contract",
+        ));
+    }
+
+    if proposal.expires_at <= chrono::Utc::now() {
+        return Err(ApiError::conflict(
+            "ProposalExpired",
+            "multisig proposal has expired",
+        ));
+    }
+
+    if proposal.status != "approved" && proposal.status != "executed" {
+        return Err(ApiError::conflict(
+            "ProposalNotApproved",
+            "multisig proposal must be approved before performing this update",
+        ));
+    }
+
+    if proposal.approved_signatures < i64::from(proposal.required_approvals) {
+        return Err(ApiError::forbidden_with_error(
+            "ThresholdNotMet",
+            "required multisig signature threshold has not been met",
+        ));
+    }
+
+    Ok(())
+}
+
 #[allow(dead_code)]
 fn map_json_rejection(err: JsonRejection) -> ApiError {
     ApiError::bad_request(
@@ -4640,6 +4723,14 @@ pub async fn update_contract_metadata(
             _ => db_internal_error("fetch contract for metadata update", err),
         })?;
 
+    require_multisig_approval_for_sensitive_update(
+        &state,
+        &headers,
+        &before,
+        "contract metadata update",
+    )
+    .await?;
+
     // Fetch before tags for audit log
     let before_tag_rows = sqlx::query!(
         "SELECT t.name FROM tags t JOIN contract_tags ct ON t.id = ct.tag_id WHERE ct.contract_id = $1",
@@ -4823,6 +4914,14 @@ pub async fn change_contract_publisher(
             _ => db_internal_error("fetch contract for publisher change", err),
         })?;
 
+    require_multisig_approval_for_sensitive_update(
+        &state,
+        &headers,
+        &before,
+        "contract publisher change",
+    )
+    .await?;
+
     let old_publisher_address: String =
         sqlx::query_scalar("SELECT stellar_address FROM publishers WHERE id = $1")
             .bind(before.publisher_id)
@@ -4923,6 +5022,14 @@ pub async fn update_contract_status(
             ),
             _ => db_internal_error("fetch contract for status update", err),
         })?;
+
+    require_multisig_approval_for_sensitive_update(
+        &state,
+        &headers,
+        &contract,
+        "contract status update",
+    )
+    .await?;
 
     let previous_status: Option<String> = sqlx::query_scalar(
         "SELECT status::text FROM verifications WHERE contract_id = $1 ORDER BY created_at DESC LIMIT 1",

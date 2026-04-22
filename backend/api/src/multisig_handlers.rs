@@ -65,6 +65,13 @@ pub struct CreateMultisigPolicyRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CreatePublisherKeyRequest {
+    pub key_name: String,
+    pub public_key: String,
+    pub algorithm: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CreateDeployProposalRequest {
     pub contract_name: String,
     pub contract_id: String,
@@ -99,6 +106,18 @@ pub struct MultisigPolicy {
     pub ordered_approvals: bool,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct PublisherMultisigKey {
+    pub id: Uuid,
+    pub publisher_id: Uuid,
+    pub key_name: String,
+    pub public_key: String,
+    pub algorithm: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -872,4 +891,131 @@ pub async fn list_proposals(
     };
 
     Ok(Json(ListProposalsResponse { items, total }))
+}
+
+pub async fn list_publisher_keys(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<PublisherMultisigKey>>> {
+    let publisher_id = Uuid::parse_str(&id)
+        .map_err(|_| ApiError::bad_request("InvalidPublisherId", "publisher id must be a UUID"))?;
+
+    let exists: Option<Uuid> = sqlx::query_scalar("SELECT id FROM publishers WHERE id = $1")
+        .bind(publisher_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = ?e, "failed to validate publisher");
+            ApiError::db_error("Failed to load publisher keys")
+        })?;
+
+    if exists.is_none() {
+        return Err(ApiError::not_found(
+            "PublisherNotFound",
+            "publisher not found",
+        ));
+    }
+
+    let keys = sqlx::query_as::<_, PublisherMultisigKey>(
+        "SELECT
+            id, publisher_id, key_name, public_key, algorithm,
+            is_active, created_at, updated_at
+         FROM publisher_multisig_keys
+         WHERE publisher_id = $1
+         ORDER BY is_active DESC, created_at DESC",
+    )
+    .bind(publisher_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = ?e, "failed to list publisher keys");
+        ApiError::db_error("Failed to load publisher keys")
+    })?;
+
+    Ok(Json(keys))
+}
+
+pub async fn create_publisher_key(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<CreatePublisherKeyRequest>,
+) -> ApiResult<Json<PublisherMultisigKey>> {
+    let publisher_id = Uuid::parse_str(&id)
+        .map_err(|_| ApiError::bad_request("InvalidPublisherId", "publisher id must be a UUID"))?;
+
+    if payload.key_name.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "InvalidKeyName",
+            "key_name cannot be empty",
+        ));
+    }
+
+    if payload.public_key.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "InvalidPublicKey",
+            "public_key cannot be empty",
+        ));
+    }
+
+    let algorithm = payload
+        .algorithm
+        .as_deref()
+        .unwrap_or("ed25519")
+        .to_ascii_lowercase();
+    if algorithm != "ed25519" {
+        return Err(ApiError::bad_request(
+            "InvalidAlgorithm",
+            "only ed25519 keys are currently supported",
+        ));
+    }
+
+    let row = sqlx::query_as::<_, PublisherMultisigKey>(
+        "INSERT INTO publisher_multisig_keys (
+            publisher_id, key_name, public_key, algorithm, is_active
+         )
+         VALUES ($1, $2, $3, $4, TRUE)
+         RETURNING
+            id, publisher_id, key_name, public_key, algorithm,
+            is_active, created_at, updated_at",
+    )
+    .bind(publisher_id)
+    .bind(payload.key_name.trim())
+    .bind(payload.public_key.trim())
+    .bind(&algorithm)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = ?e, "failed to create publisher key");
+        ApiError::db_error("Failed to create publisher key")
+    })?;
+
+    Ok(Json(row))
+}
+
+pub async fn deactivate_publisher_key(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<PublisherMultisigKey>> {
+    let key_id = Uuid::parse_str(&id)
+        .map_err(|_| ApiError::bad_request("InvalidKeyId", "key id must be a UUID"))?;
+
+    let row = sqlx::query_as::<_, PublisherMultisigKey>(
+        "UPDATE publisher_multisig_keys
+         SET is_active = FALSE,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING
+            id, publisher_id, key_name, public_key, algorithm,
+            is_active, created_at, updated_at",
+    )
+    .bind(key_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = ?e, "failed to deactivate publisher key");
+        ApiError::db_error("Failed to deactivate publisher key")
+    })?
+    .ok_or_else(|| ApiError::not_found("KeyNotFound", "publisher key not found"))?;
+
+    Ok(Json(row))
 }
