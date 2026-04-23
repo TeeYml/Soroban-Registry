@@ -72,11 +72,39 @@ pub struct NetworkAnalytics {
     pub total_views: i64,
 }
 
+/// Analytics summary for a single publisher.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct PublisherAnalytics {
+    pub publisher_id: Uuid,
+    pub name: String,
+    pub contract_count: i64,
+    pub total_views: i64,
+}
+
+/// One data-point for registry-wide deployment trends.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct DeploymentTrendPoint {
+    pub date: NaiveDate,
+    pub count: i64,
+}
+
+/// A summary of a recently added contract.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct RecentContract {
+    pub id: Uuid,
+    pub name: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub publisher_name: Option<String>,
+}
+
 /// Top-level response for GET /api/analytics/summary.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct AnalyticsSummaryResponse {
-    pub by_category: Vec<CategoryAnalytics>,
-    pub by_network: Vec<NetworkAnalytics>,
+    pub category_distribution: Vec<CategoryAnalytics>,
+    pub network_usage: Vec<NetworkAnalytics>,
+    pub top_publishers: Vec<PublisherAnalytics>,
+    pub deployment_trends: Vec<DeploymentTrendPoint>,
+    pub recent_additions: Vec<RecentContract>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -398,9 +426,102 @@ pub async fn get_analytics_summary(
         )
         .collect();
 
+    // ── Top publishers ────────────────────────────────────────────────────────
+    let publisher_rows: Vec<(Uuid, String, i64, i64)> = sqlx::query_as(
+        r#"
+        SELECT
+            p.id,
+            p.name,
+            COUNT(c.id)::BIGINT           AS contract_count,
+            COALESCE(SUM(c.view_count), 0)::BIGINT AS total_views
+        FROM publishers p
+        LEFT JOIN contracts c ON c.publisher_id = p.id
+        GROUP BY p.id, p.name
+        ORDER BY contract_count DESC
+        LIMIT 10
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|err| db_err("fetch top publishers", err))?;
+
+    let top_publishers: Vec<PublisherAnalytics> = publisher_rows
+        .into_iter()
+        .map(|(publisher_id, name, contract_count, total_views)| {
+            PublisherAnalytics {
+                publisher_id,
+                name,
+                contract_count,
+                total_views,
+            }
+        })
+        .collect();
+
+    // ── Registry-wide deployment trends (last 30 days) ─────────────────────────
+    let thirty_days_ago = chrono::Utc::now() - chrono::Duration::days(30);
+    let trend_rows: Vec<(NaiveDate, i64)> = sqlx::query_as(
+        r#"
+        SELECT
+            d::DATE AS date,
+            COALESCE(SUM(agg.count), 0)::BIGINT AS count
+        FROM generate_series(
+            ($1::TIMESTAMPTZ)::DATE,
+            CURRENT_DATE,
+            '1 day'::INTERVAL
+        ) d
+        LEFT JOIN contract_interaction_daily_aggregates agg
+               ON agg.day = d::DATE
+              AND agg.interaction_type = 'deploy'
+        GROUP BY d::DATE
+        ORDER BY d::DATE
+        "#,
+    )
+    .bind(thirty_days_ago)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|err| db_err("fetch deployment trends", err))?;
+
+    let deployment_trends: Vec<DeploymentTrendPoint> = trend_rows
+        .into_iter()
+        .map(|(date, count)| DeploymentTrendPoint { date, count })
+        .collect();
+
+    // ── Recent additions (last 10) ──────────────────────────────────────────
+    let recent_rows: Vec<(Uuid, String, chrono::DateTime<chrono::Utc>, Option<String>)> = sqlx::query_as(
+        r#"
+        SELECT
+            c.id,
+            c.name,
+            c.created_at,
+            p.name as publisher_name
+        FROM contracts c
+        LEFT JOIN publishers p ON p.id = c.publisher_id
+        ORDER BY c.created_at DESC
+        LIMIT 10
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|err| db_err("fetch recent additions", err))?;
+
+    let recent_additions: Vec<RecentContract> = recent_rows
+        .into_iter()
+        .map(|(id, name, created_at, publisher_name)| {
+            RecentContract {
+                id,
+                name,
+                created_at,
+                publisher_name,
+            }
+        })
+        .collect();
+
     Ok(Json(AnalyticsSummaryResponse {
-        by_category,
-        by_network,
+        category_distribution: by_category,
+        network_usage: by_network,
+        top_publishers,
+        deployment_trends,
+        recent_additions,
     }))
 }
 
