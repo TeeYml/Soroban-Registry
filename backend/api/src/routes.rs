@@ -4,7 +4,8 @@ use crate::{
     ab_test_handlers, analytics_handlers, auth, auth_handlers, batch_verify_handlers,
     breaking_changes, canary_handlers, category_handlers, clone_federation_handlers,
     compatibility_testing_handlers, contract_events, custom_metrics_handlers,
-    deprecation_handlers, formal_verification_handlers, handlers, interoperability_handlers,
+    deprecation_handlers, formal_verification_handlers, graph_analysis_handlers, handlers,
+    interoperability_handlers,
     metrics_handler, migration_handlers, org_handlers, performance_handlers, resource_handlers,
     security_scan_handlers, similarity_handlers, simulation_handlers, state::AppState,
     subscription_handlers, websocket,
@@ -771,6 +772,39 @@ pub fn subscription_routes() -> Router<AppState> {
 // ═══════════════════════════════════════════════════════════════════════════
 // FORMAL VERIFICATION ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTRACT INTERACTION GRAPH ANALYSIS ROUTES
+// ═══════════════════════════════════════════════════════════════════════════
+
+pub fn graph_analysis_routes() -> Router<AppState> {
+    Router::new()
+        // Full analysis report: clusters + critical contracts + cycles
+        .route(
+            "/api/contracts/graph/analysis",
+            get(graph_analysis_handlers::get_graph_analysis),
+        )
+        // Sub-network / community list
+        .route(
+            "/api/contracts/graph/clusters",
+            get(graph_analysis_handlers::get_graph_clusters),
+        )
+        // Sub-network detail by cluster ID
+        .route(
+            "/api/contracts/graph/subnetwork/:cluster_id",
+            get(graph_analysis_handlers::get_subnetwork),
+        )
+        // Critical contract ranking
+        .route(
+            "/api/contracts/graph/critical",
+            get(graph_analysis_handlers::get_critical_contracts),
+        )
+        // Vulnerability propagation from a specific contract
+        .route(
+            "/api/contracts/:id/vulnerability-propagation",
+            get(graph_analysis_handlers::get_vulnerability_propagation),
+        )
+}
 
 pub fn formal_verification_routes() -> Router<AppState> {
     Router::new()

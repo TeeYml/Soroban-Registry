@@ -421,6 +421,82 @@ pub struct GraphResponse {
     pub edges: Vec<GraphEdge>,
 }
 
+// ── Graph analysis types ──────────────────────────────────────────────────────
+
+/// A detected sub-network (community) within the contract interaction graph.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct GraphCluster {
+    /// Stable cluster identifier (integer label from community detection).
+    pub cluster_id: usize,
+    /// Contract UUIDs that belong to this cluster.
+    pub members: Vec<Uuid>,
+    /// The highest-degree node in the cluster — acts as the cluster hub.
+    pub hub_contract_id: Option<Uuid>,
+    /// Average internal edge weight (call frequency) within the cluster.
+    pub cohesion: f64,
+    /// Number of edges crossing into other clusters.
+    pub external_edges: usize,
+}
+
+/// Per-contract criticality ranking combining multiple centrality measures.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CriticalContractScore {
+    pub contract_id: Uuid,
+    pub contract_name: String,
+    /// Combined criticality score in [0, 1]; higher = more critical.
+    pub criticality_score: f64,
+    /// PageRank score — measures influence propagated through in-edges.
+    pub pagerank: f64,
+    /// Betweenness centrality — fraction of shortest paths passing through.
+    pub betweenness: f64,
+    /// In-degree: number of contracts that directly depend on this one.
+    pub in_degree: usize,
+    /// Out-degree: number of contracts this one directly depends on.
+    pub out_degree: usize,
+    /// Cluster this contract belongs to.
+    pub cluster_id: Option<usize>,
+}
+
+/// One hop in a vulnerability propagation path.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PropagationHop {
+    pub contract_id: Uuid,
+    pub contract_name: String,
+    /// Hops from the vulnerable source contract.
+    pub depth: usize,
+    /// Accumulated risk score at this node (decays with distance).
+    pub risk_score: f64,
+    /// Direct dependents that are also at risk.
+    pub propagates_to: Vec<Uuid>,
+}
+
+/// Result of a vulnerability propagation analysis from one or more source contracts.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct VulnerabilityPropagationResult {
+    /// The contract(s) where the vulnerability originates.
+    pub source_contracts: Vec<Uuid>,
+    /// All contracts reachable from sources, ordered by risk score.
+    pub affected_contracts: Vec<PropagationHop>,
+    /// Total number of contracts at risk (any depth).
+    pub total_affected: usize,
+    /// Maximum propagation depth reached.
+    pub max_depth: usize,
+    /// True if the propagation path contains a cycle.
+    pub has_cycles: bool,
+}
+
+/// Complete graph analysis report.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct GraphAnalysisReport {
+    pub total_nodes: usize,
+    pub total_edges: usize,
+    pub clusters: Vec<GraphCluster>,
+    pub critical_contracts: Vec<CriticalContractScore>,
+    /// IDs of contracts that belong to strongly-connected components (cycles).
+    pub cyclic_contracts: Vec<Uuid>,
+    pub analysis_duration_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProtocolComplianceStatus {

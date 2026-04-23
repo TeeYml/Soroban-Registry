@@ -64,6 +64,8 @@ mod state;
 mod clone_federation_handlers;
 mod formal_verification;
 mod formal_verification_handlers;
+mod graph_analysis;
+mod graph_analysis_handlers;
 mod pagination;
 mod gas_estimation_handlers;
 mod security_scan_handlers;
@@ -283,6 +285,7 @@ async fn main() -> Result<()> {
         .merge(routes::observability_routes())
         .merge(routes::websocket_routes())
         .merge(routes::subscription_routes())
+        .merge(routes::graph_analysis_routes())
         .merge(routes::formal_verification_routes())
         .merge(routes::validator_routes())
         .merge(release_notes_routes::release_notes_routes())
