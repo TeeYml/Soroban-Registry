@@ -95,6 +95,9 @@ pub struct RecentContract {
     pub name: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub publisher_name: Option<String>,
+    pub network: String,
+    pub category: Option<String>,
+    pub contract_id: String,
 }
 
 /// Top-level response for GET /api/analytics/summary.
@@ -487,13 +490,16 @@ pub async fn get_analytics_summary(
         .collect();
 
     // ── Recent additions (last 10) ──────────────────────────────────────────
-    let recent_rows: Vec<(Uuid, String, chrono::DateTime<chrono::Utc>, Option<String>)> = sqlx::query_as(
+    let recent_rows: Vec<(Uuid, String, chrono::DateTime<chrono::Utc>, Option<String>, String, Option<String>, String)> = sqlx::query_as(
         r#"
         SELECT
             c.id,
             c.name,
             c.created_at,
-            p.name as publisher_name
+            p.name as publisher_name,
+            c.network::TEXT,
+            c.category,
+            c.contract_id
         FROM contracts c
         LEFT JOIN publishers p ON p.id = c.publisher_id
         ORDER BY c.created_at DESC
@@ -506,12 +512,15 @@ pub async fn get_analytics_summary(
 
     let recent_additions: Vec<RecentContract> = recent_rows
         .into_iter()
-        .map(|(id, name, created_at, publisher_name)| {
+        .map(|(id, name, created_at, publisher_name, network, category, contract_id)| {
             RecentContract {
                 id,
                 name,
                 created_at,
                 publisher_name,
+                network,
+                category,
+                contract_id,
             }
         })
         .collect();

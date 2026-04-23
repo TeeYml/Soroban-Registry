@@ -34,7 +34,7 @@ export default function AnalyticsDashboard() {
       const trendJson = await trendRes.json();
       
       setData(dashJson);
-      setTrending(trendJson);
+      setTrending(trendJson.trending || []);
     } catch (e) {
       console.error("Failed to load analytics", e);
       if (!isAutoRefresh) setError(true);
