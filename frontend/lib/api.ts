@@ -314,6 +314,39 @@ export interface SearchSuggestionsResponse {
   items: SearchSuggestion[];
 }
 
+export type SearchIntentType =
+  | "generic"
+  | "category"
+  | "network"
+  | "verification"
+  | "tag"
+  | "author";
+
+export interface SearchIntent {
+  type: SearchIntentType;
+  confidence: number;
+  extracted: {
+    categories: string[];
+    tags: string[];
+    networks: Network[];
+    verified_only: boolean;
+    author?: string;
+  };
+}
+
+export interface SemanticSearchMetadata {
+  raw_query: string;
+  interpreted_query: string;
+  intent: SearchIntent;
+  fallback_used: boolean;
+  query_suggestions: string[];
+}
+
+export interface SemanticContractSearchResponse
+  extends PaginatedResponse<Contract> {
+  semantic: SemanticSearchMetadata;
+}
+
 export interface PublishRequest {
   contract_id: string;
   name: string;
@@ -431,6 +464,156 @@ export interface DeprecationInfo {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
+
+const CATEGORY_SYNONYMS: Record<string, string> = {
+  defi: "DeFi",
+  dex: "DeFi",
+  lending: "DeFi",
+  nft: "NFT",
+  governance: "Governance",
+  infra: "Infrastructure",
+  infrastructure: "Infrastructure",
+  payment: "Payment",
+  payments: "Payment",
+  identity: "Identity",
+  game: "Gaming",
+  gaming: "Gaming",
+  social: "Social",
+};
+
+function tokenizeQuery(query: string): string[] {
+  return query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function dedupe<T>(values: T[]): T[] {
+  return Array.from(new Set(values));
+}
+
+function detectIntent(query: string, params?: ContractSearchParams): SearchIntent {
+  const tokens = tokenizeQuery(query);
+  const categories = dedupe(
+    tokens
+      .map((token) => CATEGORY_SYNONYMS[token])
+      .filter((value): value is string => Boolean(value)),
+  );
+
+  const networks = dedupe(
+    tokens
+      .map((token) => {
+        if (token.includes("mainnet")) return "mainnet";
+        if (token.includes("testnet")) return "testnet";
+        if (token.includes("futurenet")) return "futurenet";
+        return undefined;
+      })
+      .filter((value): value is Network => Boolean(value)),
+  );
+
+  const verifiedOnly =
+    tokens.includes("verified") || tokens.includes("audited") || Boolean(params?.verified_only);
+
+  const authorTokenIndex = tokens.findIndex(
+    (token) => token === "by" || token === "from" || token === "author",
+  );
+  const author =
+    params?.author ||
+    (authorTokenIndex >= 0 && tokens[authorTokenIndex + 1]
+      ? tokens[authorTokenIndex + 1]
+      : undefined);
+
+  let type: SearchIntentType = "generic";
+  if (categories.length > 0) type = "category";
+  else if (networks.length > 0) type = "network";
+  else if (verifiedOnly) type = "verification";
+  else if (author) type = "author";
+
+  const confidence = Math.min(
+    0.98,
+    0.35 +
+      (categories.length > 0 ? 0.2 : 0) +
+      (networks.length > 0 ? 0.15 : 0) +
+      (verifiedOnly ? 0.15 : 0) +
+      (author ? 0.15 : 0),
+  );
+
+  return {
+    type,
+    confidence,
+    extracted: {
+      categories,
+      tags: [],
+      networks,
+      verified_only: verifiedOnly,
+      author,
+    },
+  };
+}
+
+function semanticScore(contract: Contract, queryTokens: string[], intent: SearchIntent): number {
+  const haystack = [
+    contract.name,
+    contract.description || "",
+    contract.category || "",
+    contract.contract_id,
+    ...contract.tags,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const tokenMatches = queryTokens.reduce(
+    (count, token) => (haystack.includes(token) ? count + 1 : count),
+    0,
+  );
+  const tokenCoverage = queryTokens.length > 0 ? tokenMatches / queryTokens.length : 0;
+  let score = tokenCoverage;
+
+  if (intent.extracted.categories.length > 0 && contract.category) {
+    const categoryMatch = intent.extracted.categories.some(
+      (category) => category.toLowerCase() === contract.category?.toLowerCase(),
+    );
+    if (categoryMatch) score += 0.35;
+  }
+
+  if (intent.extracted.networks.length > 0 && intent.extracted.networks.includes(contract.network)) {
+    score += 0.2;
+  }
+
+  if (intent.extracted.verified_only && contract.is_verified) {
+    score += 0.2;
+  }
+
+  return score;
+}
+
+function rerankContracts(
+  contracts: Contract[],
+  query: string,
+  intent: SearchIntent,
+): Contract[] {
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) return contracts;
+  return [...contracts].sort(
+    (a, b) => semanticScore(b, tokens, intent) - semanticScore(a, tokens, intent),
+  );
+}
+
+function buildSemanticSuggestions(query: string, intent: SearchIntent): string[] {
+  const suggestions: string[] = [];
+  if (intent.extracted.categories.length === 0) {
+    suggestions.push(`${query} DeFi`, `${query} NFT`);
+  }
+  if (intent.extracted.networks.length === 0) {
+    suggestions.push(`${query} on mainnet`);
+  }
+  if (!intent.extracted.verified_only) {
+    suggestions.push(`verified ${query}`);
+  }
+  return dedupe(suggestions).slice(0, 4);
+}
 
 /**
  * Wrapper for API calls with consistent error handling
@@ -698,6 +881,54 @@ export const api = {
       normalized.total_pages = raw.pages as number;
     }
     return normalized;
+  },
+
+  async semanticSearchContracts(
+    params?: ContractSearchParams,
+  ): Promise<SemanticContractSearchResponse> {
+    const rawQuery = params?.query?.trim() ?? "";
+    const intent = detectIntent(rawQuery, params);
+    const semanticParams: ContractSearchParams = {
+      ...params,
+      categories:
+        params?.categories && params.categories.length > 0
+          ? params.categories
+          : intent.extracted.categories.length > 0
+            ? intent.extracted.categories
+            : params?.categories,
+      networks:
+        params?.networks && params.networks.length > 0
+          ? params.networks
+          : intent.extracted.networks.length > 0
+            ? intent.extracted.networks
+            : params?.networks,
+      verified_only: params?.verified_only ?? intent.extracted.verified_only,
+      author: params?.author ?? intent.extracted.author,
+      query: rawQuery,
+    };
+
+    const semanticResult = await api.getContracts(semanticParams);
+    let fallbackUsed = false;
+    let finalResult = semanticResult;
+    const shouldFallback = rawQuery.length > 0 && semanticResult.items.length === 0;
+
+    if (shouldFallback) {
+      fallbackUsed = true;
+      finalResult = await api.getContracts({ ...params, query: rawQuery });
+    }
+
+    const rerankedItems = rerankContracts(finalResult.items, rawQuery, intent);
+    return {
+      ...finalResult,
+      items: rerankedItems,
+      semantic: {
+        raw_query: rawQuery,
+        interpreted_query: rawQuery,
+        intent,
+        fallback_used: fallbackUsed,
+        query_suggestions: buildSemanticSuggestions(rawQuery, intent),
+      },
+    };
   },
 
   async getContractSearchSuggestions(

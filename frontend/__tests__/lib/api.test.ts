@@ -32,6 +32,37 @@ test('getContracts: returns paginated results and calls correct URL', async () =
   expect(called.startsWith(`${API_URL}/api/contracts`)).toBe(true);
 });
 
+test('semanticSearchContracts: applies inferred category and network intent', async () => {
+  const mock = makeContractsResponse();
+  fetchMock.mockResponseOnce(JSON.stringify(mock), { status: 200 });
+
+  await api.semanticSearchContracts({ query: 'best defi on mainnet' });
+
+  const url = getCalledUrl();
+  expect(url.searchParams.getAll('categories')).toContain('DeFi');
+  expect(url.searchParams.getAll('networks')).toContain('mainnet');
+});
+
+test('semanticSearchContracts: falls back to plain keyword query when semantic result is empty', async () => {
+  fetchMock
+    .mockResponseOnce(JSON.stringify(makeContractsResponse({ items: [], total: 0 })), {
+      status: 200,
+    })
+    .mockResponseOnce(JSON.stringify(makeContractsResponse({ total: 1 })), { status: 200 });
+
+  const result = await api.semanticSearchContracts({ query: 'governance vault' });
+
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(result.semantic.fallback_used).toBe(true);
+  expect(result.items.length).toBe(1);
+});
+
+test('semanticSearchContracts: returns semantic query suggestions', async () => {
+  fetchMock.mockResponseOnce(JSON.stringify(makeContractsResponse()), { status: 200 });
+  const result = await api.semanticSearchContracts({ query: 'token factory' });
+  expect(result.semantic.query_suggestions.length).toBeGreaterThan(0);
+});
+
 test('getNetworks: returns network metadata from /networks', async () => {
   const mock = {
     cached_at: new Date().toISOString(),

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, ContractSearchParams, Contract } from '@/lib/api';
+import { api, ContractSearchParams, Contract, SemanticContractSearchResponse } from '@/lib/api';
 import ContractCard from '@/components/ContractCard';
 import ContractCardSkeleton from '@/components/ContractCardSkeleton';
 import { ActiveFilters } from '@/components/contracts/ActiveFilters';
@@ -208,7 +208,7 @@ export function ContractsContent() {
 
   // Build API parameters from filters  
   const apiParams = {
-    keyword: query,
+    query,
     categories: categories.length > 0 ? categories : undefined,
     languages: languages.length > 0 ? languages : undefined,
     networks: networks.length > 0 ? (networks as Array<'mainnet'|'testnet'|'futurenet'>) : undefined,
@@ -219,10 +219,30 @@ export function ContractsContent() {
     page_size,
   };
 
-  const { data: allContracts, isLoading, isFetching } = useQuery<Awaited<ReturnType<typeof api.getContracts>>>({
+  const { data: allContracts, isLoading, isFetching } = useQuery<SemanticContractSearchResponse>({
     queryKey: ['contracts', apiParams],
-    queryFn: () => api.getContracts(apiParams),
-    placeholderData: (previousData) => previousData ?? EMPTY_CONTRACTS_RESPONSE,
+    queryFn: () => api.semanticSearchContracts(apiParams),
+    placeholderData: (previousData) =>
+      previousData ??
+      ({
+        ...EMPTY_CONTRACTS_RESPONSE,
+        semantic: {
+          raw_query: '',
+          interpreted_query: '',
+          intent: {
+            type: 'generic',
+            confidence: 0,
+            extracted: {
+              categories: [],
+              tags: [],
+              networks: [],
+              verified_only: false,
+            },
+          },
+          fallback_used: false,
+          query_suggestions: [],
+        },
+      } satisfies SemanticContractSearchResponse),
   });
 
   const effectiveData = useMemo(() => {
