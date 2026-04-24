@@ -16,7 +16,7 @@ use crate::{
 };
 use shared::{
     ContractSubscription, ContractSubscriptionSummary, CreateWebhookRequest,
-    NotificationChannel, NotificationFrequency, NotificationType, SubscribeRequest,
+    NotificationChannel, NotificationFrequency, NotificationQueueItem, NotificationType, SubscribeRequest,
     SubscriptionStatus, UpdateSubscriptionRequest, UpdateUserNotificationPreferencesRequest,
     UserNotificationPreferences, UserSubscriptionsResponse, WebhookConfiguration,
 };
@@ -207,7 +207,7 @@ pub async fn update_subscription(
     // Build dynamic update query
     let mut updates = Vec::new();
     if let Some(status) = &req.status {
-        updates.push(format!("status = '{}'", status));
+        updates.push(format!("status = '{:?}'", status));
     }
     if let Some(types) = &req.notification_types {
         updates.push(format!("notification_types = {:?}", types));
@@ -216,16 +216,16 @@ pub async fn update_subscription(
         updates.push(format!("channels = {:?}", channels));
     }
     if let Some(frequency) = &req.frequency {
-        updates.push(format!("frequency = '{}'", frequency));
+        updates.push(format!("frequency = '{:?}'", frequency));
     }
     if let Some(min_severity) = &req.min_severity {
-        updates.push(format!("min_severity = '{}'", min_severity));
+        updates.push(format!("min_severity = '{:?}'", min_severity));
     }
 
     updates.push("updated_at = NOW()".to_string());
 
     if updates.is_empty() {
-        return Err(ApiError::bad_request("No fields to update"));
+        return Err(ApiError::bad_request("No fields to update", "Please specify at least one field to update"));
     }
 
     let update_clause = updates.join(", ");
@@ -328,7 +328,7 @@ pub async fn update_notification_preferences(
     updates.push(format!("updated_at = NOW()"));
 
     if updates.is_empty() {
-        return Err(ApiError::bad_request("No fields to update"));
+        return Err(ApiError::bad_request("No fields to update", "Please specify at least one field to update"));
     }
 
     let update_clause = updates.join(", ");

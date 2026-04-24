@@ -435,7 +435,7 @@ pub async fn auto_scan_contract(
     )
     .bind(contract_id)
     .bind(contract_version_id)
-    .fetch_one(state)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| ApiError::internal(format!("Failed to create auto scan: {}", e)))?;
 

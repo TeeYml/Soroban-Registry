@@ -53,7 +53,7 @@ impl From<&Contract> for ContractEventContract {
             publisher_id: contract.publisher_id,
             network: contract.network.to_string(),
             category: contract.category.clone(),
-            tags: contract.tags.clone(),
+            tags: contract.tags.iter().map(|t| t.name.clone()).collect(),
             wasm_hash: contract.wasm_hash.clone(),
             is_verified: contract.is_verified,
         }

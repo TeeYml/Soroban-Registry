@@ -252,6 +252,7 @@ export interface ActivityFeedParams {
   cursor?: string;
   limit?: number;
   event_type?: AnalyticsEventType;
+  contract_id?: string;
 }
 
 export interface ActivityFeedResponse {
@@ -658,6 +659,7 @@ export const api = {
 
     const queryParams = new URLSearchParams();
     if (params?.query) queryParams.append("query", params.query);
+    if (params?.contract_id) queryParams.append("contract_id", params.contract_id);
     if (params?.network) queryParams.append("network", params.network);
     params?.networks?.forEach((network) => queryParams.append("networks", network));
     if (params?.verified_only !== undefined)
@@ -918,6 +920,7 @@ export const api = {
     if (params?.cursor) search.set("cursor", params.cursor);
     if (params?.limit != null) search.set("limit", String(params.limit));
     if (params?.event_type) search.set("event_type", params.event_type);
+    if (params?.contract_id) search.set("contract_id", params.contract_id);
 
     const qs = search.toString();
     return handleApiCall<ActivityFeedResponse>(

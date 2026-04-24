@@ -1,4 +1,5 @@
 use anyhow::Result;
+use crate::Cli;
 use clap::Parser;
 use colored::Colorize;
 use rustyline::error::ReadlineError;
