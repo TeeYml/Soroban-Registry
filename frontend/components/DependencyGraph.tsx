@@ -69,7 +69,7 @@ interface EdgeTooltipState {
 // ─── Component ────────────────────────────────────────────────────────────────
 const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
   function DependencyGraph(
-    { nodes, edges, searchQuery = "", dependentCounts = new Map(), onNodeClick, selectedNode },
+    { nodes, edges, searchQuery = "", dependentCounts = new Map(), onNodeClick, selectedNode }: DependencyGraphProps,
     ref
   ) {
     const svgRef = useRef<SVGSVGElement>(null);
@@ -81,6 +81,68 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
     const scrollWrapperRef = useRef<HTMLDivElement>(null); // ← new: scroll wrapper ref
     const [, setPinnedNodes] = useState<Set<string>>(new Set());
     const pinnedRef = useRef<Set<string>>(new Set());
+    const [highlightedChain, setHighlightedChain] = useState<{ nodes: Set<string>; edges: Set<string> } | null>(null);
+
+    // ── Compute Chain Highlighting ──────────────────────────────────────────
+    const computeChain = useCallback((startNodeId: string) => {
+      const chainNodes = new Set<string>([startNodeId]);
+      const chainEdges = new Set<string>();
+      
+      // Map for easy traversal
+      const outEdges = new Map<string, string[]>();
+      const inEdges = new Map<string, string[]>();
+      
+      edges.forEach(e => {
+        // Handle both raw edges (strings) and D3-mutated edges (objects)
+        const src = typeof e.source === 'string' ? e.source : (e.source as any).id;
+        const tgt = typeof e.target === 'string' ? e.target : (e.target as any).id;
+        
+        if (!outEdges.has(src)) outEdges.set(src, []);
+        if (!inEdges.has(tgt)) inEdges.set(tgt, []);
+        outEdges.get(src)!.push(tgt);
+        inEdges.get(tgt)!.push(src);
+      });
+
+      // BFS for descendants
+      let queue: string[] = [startNodeId];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        (outEdges.get(current) || []).forEach(target => {
+          if (!chainNodes.has(target)) {
+            chainNodes.add(target);
+            chainEdges.add(`${current}-${target}`);
+            queue.push(target);
+          } else if (!chainEdges.has(`${current}-${target}`)) {
+             chainEdges.add(`${current}-${target}`);
+          }
+        });
+      }
+      
+      // BFS for ancestors
+      queue = [startNodeId];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        (inEdges.get(current) || []).forEach(source => {
+          if (!chainNodes.has(source)) {
+            chainNodes.add(source);
+            chainEdges.add(`${source}-${current}`);
+            queue.push(source);
+          } else if (!chainEdges.has(`${source}-${current}`)) {
+            chainEdges.add(`${source}-${current}`);
+          }
+        });
+      }
+      
+      return { nodes: chainNodes, edges: chainEdges };
+    }, [edges]);
+
+    useEffect(() => {
+      if (selectedNode) {
+        setHighlightedChain(computeChain(selectedNode.id));
+      } else {
+        setHighlightedChain(null);
+      }
+    }, [selectedNode, computeChain]);
 
     // ── Large-graph performance flags ─────────────────────────────────────────
     const isLargeGraph = nodes.length > 200;
@@ -534,7 +596,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
       const g = gRef.current;
       if (!g) return;
 
-      if (!selectedNode) {
+      if (!selectedNode && !highlightedChain) {
         g.selectAll<SVGGElement, SimNode>("g.node").attr("opacity", 1);
         g.selectAll<SVGLineElement, SimLink>("line.graph-edge")
           .attr("opacity", (d) => d.data.is_circular ? 0.9 : 0.6)
@@ -542,33 +604,67 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         return;
       }
 
-      const neighbourIds = new Set<string>([selectedNode.id]);
-      g.selectAll<SVGLineElement, SimLink>("line.graph-edge").each(function (d) {
-        const src = (d.source as SimNode).id;
-        const tgt = (d.target as SimNode).id;
-        if (src === selectedNode.id || tgt === selectedNode.id) {
-          neighbourIds.add(src);
-          neighbourIds.add(tgt);
-        }
-      });
+      const neighbourIds = new Set<string>();
+      const chainNodeIds = highlightedChain?.nodes ?? new Set();
+      const chainEdgeIds = highlightedChain?.edges ?? new Set();
+
+      if (selectedNode) {
+        neighbourIds.add(selectedNode.id);
+        g.selectAll<SVGLineElement, SimLink>("line.graph-edge").each(function (d) {
+          const src = (d.source as SimNode).id;
+          const tgt = (d.target as SimNode).id;
+          if (src === selectedNode.id || tgt === selectedNode.id) {
+            neighbourIds.add(src);
+            neighbourIds.add(tgt);
+          }
+        });
+      }
 
       g.selectAll<SVGGElement, SimNode>("g.node")
-        .attr("opacity", (d) => neighbourIds.has(d.id) ? 1 : 0.15);
+        .attr("opacity", (d) => {
+          if (chainNodeIds.has(d.id)) return 1;
+          if (neighbourIds.has(d.id)) return 1;
+          return 0.1;
+        })
+        .select("circle")
+        .attr("stroke", (d) => {
+          if (selectedNode?.id === d.id) return "#60a5fa";
+          if (chainNodeIds.has(d.id)) return "#3b82f6";
+          const deps = dependentCounts.get(d.id) ?? 0;
+          return deps >= 5 ? "#f59e0b" : "transparent";
+        })
+        .attr("stroke-width", (d) => {
+           if (selectedNode?.id === d.id) return 4;
+           if (chainNodeIds.has(d.id)) return 2.5;
+           const deps = dependentCounts.get(d.id) ?? 0;
+           return deps >= 5 ? 2.5 : 0;
+        });
 
       g.selectAll<SVGLineElement, SimLink>("line.graph-edge")
         .attr("opacity", (d) => {
           const src = (d.source as SimNode).id;
           const tgt = (d.target as SimNode).id;
-          return (src === selectedNode.id || tgt === selectedNode.id) ? 1 : 0.05;
+          const edgeId = `${src}-${tgt}`;
+          if (chainEdgeIds.has(edgeId)) return 1;
+          if (selectedNode && (src === selectedNode.id || tgt === selectedNode.id)) return 0.8;
+          return 0.05;
         })
         .attr("stroke", (d) => {
           const src = (d.source as SimNode).id;
           const tgt = (d.target as SimNode).id;
-          return (src === selectedNode.id || tgt === selectedNode.id)
-            ? (d.data.is_circular ? "#dc2626" : "#60a5fa")
-            : (d.data.is_circular ? "#ef4444" : "#374151");
+          const edgeId = `${src}-${tgt}`;
+          if (chainEdgeIds.has(edgeId)) return "#60a5fa";
+          if (selectedNode && (src === selectedNode.id || tgt === selectedNode.id)) return "#93c5fd";
+          return d.data.is_circular ? "#ef4444" : "#374151";
+        })
+        .attr("stroke-width", (d) => {
+          const src = (d.source as SimNode).id;
+          const tgt = (d.target as SimNode).id;
+          const edgeId = `${src}-${tgt}`;
+          if (chainEdgeIds.has(edgeId)) return 2.5;
+          return isLargeGraph ? 0.8 : 1.5;
         });
-    }, [selectedNode]);
+    }, [selectedNode, highlightedChain, isLargeGraph, dependentCounts]);
 
     // ── Search highlight ──────────────────────────────────────────────────
     useEffect(() => {

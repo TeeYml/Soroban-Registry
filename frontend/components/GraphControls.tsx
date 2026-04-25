@@ -20,6 +20,8 @@ interface GraphControlsProps {
     onDemoModeChange?: (v: boolean) => void;
     demoNodeCount?: number;
     onDemoNodeCountChange?: (v: number) => void;
+    explorationMode?: boolean;
+    onExplorationModeChange?: (v: boolean) => void;
     totalNodes: number;
     totalEdges: number;
     cyclicEdgeCount: number;
@@ -78,6 +80,8 @@ export default function GraphControls({
     onPanLeft,
     onPanRight,
     networkCounts,
+    explorationMode = false,
+    onExplorationModeChange = () => {},
 }: GraphControlsProps) {
     const [statsOpen, setStatsOpen] = useState(false);
     return (
@@ -184,6 +188,21 @@ export default function GraphControls({
                                 )}
                             </div>
                             <span className="font-medium">Show Circular Dependencies Only</span>
+                        </button>
+
+                        <button
+                            onClick={() => onExplorationModeChange(!explorationMode)}
+                            className={`flex items-center gap-2 w-full text-sm mt-3 transition-colors ${explorationMode ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${explorationMode ? 'bg-primary border-primary' : 'border-border'}`}>
+                                {explorationMode && (
+                                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                            </div>
+                            <GitBranch className="w-3.5 h-3.5 text-primary/70" />
+                            <span className="font-medium">Exploration Mode (Click to Expand)</span>
                         </button>
                     </div>
 

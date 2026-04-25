@@ -93,10 +93,42 @@ export function GraphContent() {
     const [demoMode, setDemoMode] = useState(false);
     const [demoNodeCount, setDemoNodeCount] = useState(200);
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+    const [explorationMode, setExplorationMode] = useState(false);
+    const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
+    const [explorationNodes, setExplorationNodes] = useState<GraphNode[]>([]);
+    const [explorationEdges, setExplorationEdges] = useState<GraphEdge[]>([]);
     const [searchMatchIndex, setSearchMatchIndex] = useState(0);
     const graphRef = useRef<DependencyGraphHandle | null>(null);
     const router = useRouter();
     const { logEvent } = useAnalytics();
+
+    // Reset exploration state when mode is toggled off
+    useEffect(() => {
+        if (!explorationMode) {
+            setExplorationNodes([]);
+            setExplorationEdges([]);
+            setExpandedNodeIds(new Set());
+        }
+    }, [explorationMode]);
+
+    const fetchLocalGraph = useCallback(async (id: string) => {
+        if (!id) return;
+        try {
+            const localData = await api.getContractLocalGraph(id, 1);
+            setExplorationNodes(prev => {
+                const existingIds = new Set(prev.map(n => n.id));
+                const newNodes = localData.nodes.filter(n => !existingIds.has(n.id));
+                return [...prev, ...newNodes];
+            });
+            setExplorationEdges(prev => {
+                const existingKeys = new Set(prev.map(e => `${e.source}-${e.target}`));
+                const newEdges = localData.edges.filter(e => !existingKeys.has(`${e.source}-${e.target}`));
+                return [...prev, ...newEdges];
+            });
+        } catch (err) {
+            console.error('Failed to fetch local graph:', err);
+        }
+    }, []);
 
     const { data: apiData, isLoading, error } = useQuery({
         queryKey: ['contract-graph', networkFilter],
@@ -152,29 +184,30 @@ export function GraphContent() {
     );
 
     const filteredGraph = useMemo(() => {
-        const edgeFiltered = rawEdges.filter((edge) => {
-            if (dependencyTypeFilter && edge.dependency_type !== dependencyTypeFilter) return false;
-            if (showCyclesOnly && !edge.is_circular) return false;
-            if (minCallFrequency > 0 && (edge.call_frequency ?? 0) < minCallFrequency) return false;
+        if (explorationMode) {
+            return { nodes: explorationNodes, edges: explorationEdges };
+        }
+
+        const nodes = rawNodes.filter((n) => {
+            if (networkFilter && n.network !== networkFilter) return false;
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                return n.name.toLowerCase().includes(q) || n.contract_id.toLowerCase().includes(q);
+            }
             return true;
         });
 
-        const usesEdgeFocusedFilter = showCyclesOnly || Boolean(dependencyTypeFilter) || minCallFrequency > 0;
-        if (!usesEdgeFocusedFilter) {
-            return { nodes: rawNodes, edges: edgeFiltered };
-        }
+        const nodeIds = new Set(nodes.map((n) => n.id));
+        const edges = rawEdges.filter((e) => {
+            if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) return false;
+            if (dependencyTypeFilter && e.dependency_type !== dependencyTypeFilter) return false;
+            if (minCallFrequency > 0 && (e.call_frequency || 0) < minCallFrequency) return false;
+            if (showCyclesOnly && !e.is_circular) return false;
+            return true;
+        });
 
-        const nodeIds = new Set<string>();
-        for (const edge of edgeFiltered) {
-            nodeIds.add(edge.source);
-            nodeIds.add(edge.target);
-        }
-
-        return {
-            nodes: rawNodes.filter((node) => nodeIds.has(node.id)),
-            edges: edgeFiltered,
-        };
-    }, [rawNodes, rawEdges, dependencyTypeFilter, showCyclesOnly, minCallFrequency]);
+        return { nodes, edges };
+    }, [explorationMode, explorationNodes, explorationEdges, rawNodes, rawEdges, networkFilter, searchQuery, dependencyTypeFilter, minCallFrequency, showCyclesOnly]);
 
     const nodes = filteredGraph.nodes;
     const edges = filteredGraph.edges;
@@ -216,14 +249,35 @@ export function GraphContent() {
         return counts;
     }, [nodes]);
 
-    const handleNodeClick = useCallback((node: GraphNode | null) => {
-        if (!node) {
-            setSelectedNode(null);
-            return;
+    const handleNodeClick = (node: GraphNode | null) => {
+        setSelectedNode(node);
+        if (node && explorationMode) {
+            fetchLocalGraph(node.id);
         }
+        if (node) {
+            logEvent('node_selected', {
+                contract_id: node.contract_id,
+                name: node.name,
+                source: 'graph_page'
+            });
+        }
+    };
 
-        router.push(`/contracts/${node.contract_id}`);
-    }, [router]);
+    const handleExpandNode = (id: string) => {
+        setExpandedNodeIds((prev: Set<string>) => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+                if (explorationMode) {
+                    fetchLocalGraph(id);
+                }
+            }
+            return next;
+        });
+        logEvent('node_expanded', { node_id: id });
+    };
 
     // Search match navigation
     const searchMatches = useMemo(() => {
@@ -377,6 +431,8 @@ export function GraphContent() {
                 totalEdges={edges.length}
                 cyclicEdgeCount={cyclicEdgeCount}
                 criticalCount={criticalCount}
+                explorationMode={explorationMode}
+                onExplorationModeChange={setExplorationMode}
                 searchMatchCount={searchMatches.length}
                 searchMatchIndex={searchMatchIndex}
                 onPrevMatch={handlePrevMatch}
@@ -462,13 +518,26 @@ export function GraphContent() {
                         )}
 
                         {/* Link */}
-                        <a
-                            href={`/contracts/${selectedNode.contract_id}`}
-                            className="flex items-center justify-center gap-1.5 w-full py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold btn-glow hover:brightness-110 transition-all focus-visible:ring-1 focus-visible:ring-primary focus:outline-none"
-                        >
-                            <ExternalLink className="w-3 h-3" />
-                            View Contract Details
-                        </a>
+                        <div className="grid grid-cols-2 gap-2 pt-2">
+                            <button
+                                onClick={() => handleExpandNode(selectedNode.id)}
+                                className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all focus-visible:ring-1 focus:outline-none ${
+                                    expandedNodeIds.has(selectedNode.id)
+                                        ? 'bg-accent text-foreground border border-border hover:bg-accent/80'
+                                        : 'bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30'
+                                }`}
+                            >
+                                <Sparkles className="w-3 h-3" />
+                                {expandedNodeIds.has(selectedNode.id) ? 'Collapse' : 'Expand'}
+                            </button>
+                            <a
+                                href={`/contracts/${selectedNode.contract_id}`}
+                                className="flex items-center justify-center gap-1.5 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold btn-glow hover:brightness-110 transition-all focus-visible:ring-1 focus-visible:ring-primary focus:outline-none"
+                            >
+                                <ExternalLink className="w-3 h-3" />
+                                Details
+                            </a>
+                        </div>
                     </div>
                 </div>
             )}
