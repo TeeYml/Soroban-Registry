@@ -629,7 +629,7 @@ pub async fn get_performance_comparison(
 ) -> ApiResult<Json<Value>> {
     let contract_uuid = parse_uuid(&contract_id, "contract")?;
     let limit = params.limit.clamp(1, 25);
-    let items = fetch_comparisons(
+    let items: Vec<PerformanceComparisonEntry> = fetch_comparisons(
         &state,
         contract_uuid,
         params.benchmark_name.as_deref(),

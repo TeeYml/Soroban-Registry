@@ -157,7 +157,11 @@ impl From<sqlx::Error> for ApiError {
 
 impl From<StatusCode> for ApiError {
     fn from(status: StatusCode) -> Self {
-        Self::new(status, format!("{}", ErrorCode::from_status(status)), status.canonical_reason().unwrap_or("Unknown Error"))
+        Self::new(
+            status,
+            format!("{}", ErrorCode::from_status(status)),
+            status.canonical_reason().unwrap_or("Unknown Error"),
+        )
     }
 }
 

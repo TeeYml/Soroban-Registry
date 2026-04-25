@@ -48,7 +48,7 @@ async fn run_aggregation(pool: &PgPool) -> Result<(), sqlx::Error> {
         INSERT INTO analytics_daily_aggregates (
             contract_id, date,
             deployment_count, unique_deployers,
-            verification_count, publish_count, version_count,
+            verification_count, publish_count, version_count, update_count,
             total_events, unique_users,
             network_breakdown, top_users
         )
@@ -64,6 +64,7 @@ async fn run_aggregation(pool: &PgPool) -> Result<(), sqlx::Error> {
             COUNT(*) FILTER (WHERE e.event_type = 'contract_verified') AS verification_count,
             COUNT(*) FILTER (WHERE e.event_type = 'contract_published') AS publish_count,
             COUNT(*) FILTER (WHERE e.event_type = 'version_created') AS version_count,
+            COUNT(*) FILTER (WHERE e.event_type = 'contract_updated') AS update_count,
 
             -- totals
             COUNT(*) AS total_events,
@@ -117,6 +118,7 @@ async fn run_aggregation(pool: &PgPool) -> Result<(), sqlx::Error> {
             verification_count  = EXCLUDED.verification_count,
             publish_count       = EXCLUDED.publish_count,
             version_count       = EXCLUDED.version_count,
+            update_count        = EXCLUDED.update_count,
             total_events        = EXCLUDED.total_events,
             unique_users        = EXCLUDED.unique_users,
             network_breakdown   = EXCLUDED.network_breakdown,

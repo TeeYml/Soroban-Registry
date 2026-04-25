@@ -45,7 +45,7 @@ async fn test_slug_auto_generation() {
 
     assert_eq!(res.status(), StatusCode::CREATED);
     let contract: Value = res.json().await.unwrap();
-    
+
     let slug = contract.get("slug").and_then(Value::as_str).unwrap();
     assert_eq!(slug, expected_slug);
 
@@ -55,7 +55,7 @@ async fn test_slug_auto_generation() {
         .send()
         .await
         .unwrap();
-    
+
     assert_eq!(get_res.status(), StatusCode::OK);
     let fetched: Value = get_res.json().await.unwrap();
     assert_eq!(fetched["contract"]["id"], contract["id"]);
@@ -194,7 +194,7 @@ async fn test_slug_immutability() {
         .send()
         .await
         .unwrap();
-    
+
     assert_eq!(update_res.status(), StatusCode::OK);
     let updated: Value = update_res.json().await.unwrap();
     assert_eq!(updated["slug"], slug);

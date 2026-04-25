@@ -5,16 +5,16 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use rust_decimal::Decimal;
 use shared::{
     Attestation, AttestationDecision, RegisterValidatorRequest, SubmitAttestationRequest,
     Validator, ValidatorNetworkStatus, ValidatorPerformance, VerificationTask,
     VerificationTaskStatus,
 };
-use uuid::Uuid;
-use rust_decimal::Decimal;
-use ed25519_dalek::{Verifier, VerifyingKey, Signature};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use stellar_strkey::ed25519::PublicKey as StrKeyPublicKey;
+use uuid::Uuid;
 
 /// Register a new validator (Issue # validators)
 pub async fn register_validator(
@@ -36,7 +36,10 @@ pub async fn register_validator(
     .map_err(|err| {
         if let Some(db_err) = err.as_database_error() {
             if db_err.is_unique_violation() {
-                return ApiError::conflict("ValidatorAlreadyExists", "Validator with this address already registered");
+                return ApiError::conflict(
+                    "ValidatorAlreadyExists",
+                    "Validator with this address already registered",
+                );
             }
         }
         ApiError::internal(format!("Failed to register validator: {}", err))
@@ -44,24 +47,28 @@ pub async fn register_validator(
 
     // Initialize performance record
     sqlx::query(
-        "INSERT INTO validator_performance (validator_id) VALUES ($1) ON CONFLICT DO NOTHING"
+        "INSERT INTO validator_performance (validator_id) VALUES ($1) ON CONFLICT DO NOTHING",
     )
     .bind(validator.id)
     .execute(&state.db)
     .await
-    .map_err(|err| ApiError::internal(format!("Failed to initialize validator performance: {}", err)))?;
+    .map_err(|err| {
+        ApiError::internal(format!(
+            "Failed to initialize validator performance: {}",
+            err
+        ))
+    })?;
 
     Ok(Json(validator))
 }
 
 /// List all validators
-pub async fn list_validators(
-    State(state): State<AppState>,
-) -> ApiResult<Json<Vec<Validator>>> {
-    let validators: Vec<Validator> = sqlx::query_as("SELECT * FROM validators ORDER BY reputation_score DESC")
-        .fetch_all(&state.db)
-        .await
-        .map_err(|err| ApiError::internal(format!("Failed to fetch validators: {}", err)))?;
+pub async fn list_validators(State(state): State<AppState>) -> ApiResult<Json<Vec<Validator>>> {
+    let validators: Vec<Validator> =
+        sqlx::query_as("SELECT * FROM validators ORDER BY reputation_score DESC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|err| ApiError::internal(format!("Failed to fetch validators: {}", err)))?;
 
     Ok(Json(validators))
 }
@@ -113,17 +120,25 @@ pub async fn submit_attestation(
     Path(validator_id): Path<Uuid>,
     ValidatedJson(req): ValidatedJson<SubmitAttestationRequest>,
 ) -> ApiResult<Json<Attestation>> {
-    let mut tx = state.db.begin().await.map_err(|err| ApiError::internal(err.to_string()))?;
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|err| ApiError::internal(err.to_string()))?;
 
     // 1. Verify validator exists and get their stellar address
     let validator_address: String = sqlx::query_scalar(
-        "SELECT stellar_address FROM validators WHERE id = $1 AND status = 'active'"
+        "SELECT stellar_address FROM validators WHERE id = $1 AND status = 'active'",
     )
     .bind(validator_id)
     .fetch_one(&mut *tx)
     .await
     .map_err(|err| match err {
-        sqlx::Error::RowNotFound => ApiError::new(axum::http::StatusCode::FORBIDDEN, "ValidatorNotActive", "Validator is not active or not found"),
+        sqlx::Error::RowNotFound => ApiError::new(
+            axum::http::StatusCode::FORBIDDEN,
+            "ValidatorNotActive",
+            "Validator is not active or not found",
+        ),
         _ => ApiError::internal(err.to_string()),
     })?;
 
@@ -145,9 +160,8 @@ pub async fn submit_attestation(
             }
         };
 
-        let verifying_key = VerifyingKey::from_bytes(&public_key_bytes).map_err(|_| {
-            ApiError::internal("Failed to derive verifying key".to_string())
-        })?;
+        let verifying_key = VerifyingKey::from_bytes(&public_key_bytes)
+            .map_err(|_| ApiError::internal("Failed to derive verifying key".to_string()))?;
 
         // Message: "task_id:decision:compiled_wasm_hash"
         let message = format!(
@@ -159,9 +173,7 @@ pub async fn submit_attestation(
 
         verifying_key
             .verify(message.as_bytes(), &signature)
-            .map_err(|_| {
-                ApiError::unauthorized("Invalid signature for the provided task data")
-            })?;
+            .map_err(|_| ApiError::unauthorized("Invalid signature for the provided task data"))?;
     } else {
         return Err(ApiError::bad_request(
             "SignatureRequired",
@@ -206,18 +218,17 @@ pub async fn submit_attestation(
     .map_err(|err| ApiError::internal(format!("Failed to update validator performance: {}", err)))?;
 
     // Check consensus for this task
-    let attestation_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM attestations WHERE task_id = $1"
-    )
-    .bind(req.task_id)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(|err| ApiError::internal(err.to_string()))?;
+    let attestation_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM attestations WHERE task_id = $1")
+            .bind(req.task_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|err| ApiError::internal(err.to_string()))?;
 
     // Simple consensus: if we have 3 attestations, mark task as completed
     if attestation_count >= 3 {
         sqlx::query(
-            "UPDATE verification_tasks SET status = 'completed', updated_at = NOW() WHERE id = $1"
+            "UPDATE verification_tasks SET status = 'completed', updated_at = NOW() WHERE id = $1",
         )
         .bind(req.task_id)
         .execute(&mut *tx)
@@ -226,7 +237,7 @@ pub async fn submit_attestation(
 
         // Also update the contract verification status if majority agrees level
         let valid_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM attestations WHERE task_id = $1 AND decision = 'valid'"
+            "SELECT COUNT(*) FROM attestations WHERE task_id = $1 AND decision = 'valid'",
         )
         .bind(req.task_id)
         .fetch_one(&mut *tx)
@@ -235,13 +246,12 @@ pub async fn submit_attestation(
 
         if valid_count >= 2 {
             // Majority says valid
-            let contract_id: Uuid = sqlx::query_scalar(
-                "SELECT contract_id FROM verification_tasks WHERE id = $1"
-            )
-            .bind(req.task_id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|err| ApiError::internal(err.to_string()))?;
+            let contract_id: Uuid =
+                sqlx::query_scalar("SELECT contract_id FROM verification_tasks WHERE id = $1")
+                    .bind(req.task_id)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(|err| ApiError::internal(err.to_string()))?;
 
             sqlx::query(
                 "UPDATE contracts SET is_verified = true, verified_at = NOW(), updated_at = NOW() WHERE id = $1"
@@ -253,7 +263,9 @@ pub async fn submit_attestation(
         }
     }
 
-    tx.commit().await.map_err(|err| ApiError::internal(err.to_string()))?;
+    tx.commit()
+        .await
+        .map_err(|err| ApiError::internal(err.to_string()))?;
 
     Ok(Json(attestation))
 }
@@ -263,16 +275,18 @@ pub async fn get_validator_performance(
     State(state): State<AppState>,
     Path(validator_id): Path<Uuid>,
 ) -> ApiResult<Json<ValidatorPerformance>> {
-    let perf: ValidatorPerformance = sqlx::query_as(
-        "SELECT * FROM validator_performance WHERE validator_id = $1"
-    )
-    .bind(validator_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|err| match err {
-        sqlx::Error::RowNotFound => ApiError::not_found("PerformanceNotFound", "No performance record for this validator"),
-        _ => ApiError::internal(err.to_string()),
-    })?;
+    let perf: ValidatorPerformance =
+        sqlx::query_as("SELECT * FROM validator_performance WHERE validator_id = $1")
+            .bind(validator_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|err| match err {
+                sqlx::Error::RowNotFound => ApiError::not_found(
+                    "PerformanceNotFound",
+                    "No performance record for this validator",
+                ),
+                _ => ApiError::internal(err.to_string()),
+            })?;
 
     Ok(Json(perf))
 }

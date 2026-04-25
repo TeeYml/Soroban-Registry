@@ -1,0 +1,1211 @@
+﻿cargo :     Checking api v0.1.0 (C:\Users\WALZEEM\Soroban-Registry\backend\api)
+At line:1 char:28
++ ... UILD_JOBS='2'; cargo clippy --all-targets -- -D warnings 2>&1 | Tee-O ...
++                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking ap...ry\backend\api) 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Checking anstyle-query v1.1.5
+    Checking colorchoice v1.0.5
+error[E0252]: the name `ConnectionManager` is defined multiple times
+ --> api\src\cache.rs:3:5
+  |
+2 | use redis::aio::ConnectionManager;
+  |     ----------------------------- previous import of the type 
+`ConnectionManager` here
+3 | use redis::aio::ConnectionManager;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ConnectionManager` reimported here
+  |
+  = note: `ConnectionManager` must be defined only once in the type namespace 
+of this module
+
+error[E0252]: the name `SourceStorage` is defined multiple times
+  --> api\src\state.rs:10:5
+   |
+7  | use shared::source_storage::SourceStorage;
+   |     ------------------------------------- previous import of the type 
+`SourceStorage` here
+...
+10 | use shared::source_storage::SourceStorage;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `SourceStorage` reimported here
+   |
+   = note: `SourceStorage` must be defined only once in the type namespace of 
+this module
+
+    Checking is_terminal_polyfill v1.70.2
+    Checking anstream v1.0.0
+    Checking clap_lex v1.1.0
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+  --> api\src\subscription_handlers.rs:38:22
+   |
+38 |     auth_user: auth::AuthenticatedUser,
+   |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:102:22
+    |
+102 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:130:22
+    |
+130 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:198:22
+    |
+198 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:253:22
+    |
+253 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:286:22
+    |
+286 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:362:22
+    |
+362 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:386:22
+    |
+386 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:419:22
+    |
+419 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:444:22
+    |
+444 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `NotificationQueueItem` in this scope
+   --> api\src\subscription_handlers.rs:452:45
+    |
+452 |     let notifications = sqlx::query_as::<_, NotificationQueueItem>(
+    |                                             ^^^^^^^^^^^^^^^^^^^^^
+...
+490 | pub struct NotificationQuery {
+    | ---------------------------- similarly named struct `NotificationQuery` 
+defined here
+    |
+help: a struct with a similar name exists
+    |
+452 -     let notifications = sqlx::query_as::<_, NotificationQueueItem>(
+452 +     let notifications = sqlx::query_as::<_, NotificationQuery>(
+    |
+help: consider importing this struct
+    |
+4   + use shared::NotificationQueueItem;
+    |
+
+error[E0412]: cannot find type `NotificationQueueItem` in this scope
+   --> api\src\subscription_handlers.rs:499:28
+    |
+490 | pub struct NotificationQuery {
+    | ---------------------------- similarly named struct `NotificationQuery` 
+defined here
+...
+499 |     pub notifications: Vec<NotificationQueueItem>,
+    |                            ^^^^^^^^^^^^^^^^^^^^^
+    |
+help: a struct with a similar name exists
+    |
+499 -     pub notifications: Vec<NotificationQueueItem>,
+499 +     pub notifications: Vec<NotificationQuery>,
+    |
+help: consider importing this struct
+    |
+4   + use shared::NotificationQueueItem;
+    |
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:509:22
+    |
+509 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:538:22
+    |
+538 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error[E0412]: cannot find type `AuthenticatedUser` in module `auth`
+   --> api\src\subscription_handlers.rs:566:22
+    |
+566 |     auth_user: auth::AuthenticatedUser,
+    |                      ^^^^^^^^^^^^^^^^^ not found in `auth`
+
+error: unused import: `redis::aio::ConnectionManager`
+ --> api\src\cache.rs:3:5
+  |
+3 | use redis::aio::ConnectionManager;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `-D unused-imports` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+    Checking strsim v0.11.1
+error: unused import: `http::StatusCode`
+ --> api\src\security_scan_handlers.rs:6:5
+  |
+6 |     http::StatusCode,
+  |     ^^^^^^^^^^^^^^^^
+
+error: unused import: `chrono::Utc`
+ --> api\src\security_scan_handlers.rs:9:5
+  |
+9 | use chrono::Utc;
+  |     ^^^^^^^^^^^
+
+error: unused import: `Serialize`
+  --> api\src\security_scan_handlers.rs:10:26
+   |
+10 | use serde::{Deserialize, Serialize};
+   |                          ^^^^^^^^^
+
+error: unused import: `IssueSeverity`
+  --> api\src\security_scan_handlers.rs:18:60
+   |
+18 |     ContractSecuritySummary, CreateSecurityScannerRequest, IssueSeverity, 
+IssueStatus,
+   |                                                            ^^^^^^^^^^^^^
+
+error: unused import: `shared::source_storage::SourceStorage`
+  --> api\src\state.rs:10:5
+   |
+10 | use shared::source_storage::SourceStorage;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: unused import: `chrono::Utc`
+ --> api\src\subscription_handlers.rs:9:5
+  |
+9 | use chrono::Utc;
+  |     ^^^^^^^^^^^
+
+error: unused import: `SubscriptionStatus`
+  --> api\src\subscription_handlers.rs:19:64
+   |
+19 |     NotificationFrequency, NotificationType, SubscribeRequest, 
+SubscriptionStatus,
+   |                                                                
+^^^^^^^^^^^^^^^^^^
+
+error[E0124]: field `contract_events` is already declared
+  --> api\src\state.rs:57:5
+   |
+48 |     pub contract_events: Arc<ContractEventHub>,
+   |     ------------------------------------------ `contract_events` first 
+declared here
+...
+57 |     pub contract_events: Arc<ContractEventHub>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field already declared
+
+error[E0124]: field `source_storage` is already declared
+  --> api\src\state.rs:58:5
+   |
+55 |     pub source_storage: Arc<SourceStorage>,
+   |     -------------------------------------- `source_storage` first 
+declared here
+...
+58 |     pub source_storage: Arc<shared::source_storage::SourceStorage>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field 
+already declared
+
+    Checking clap_builder v4.6.0
+error[E0107]: type alias takes 1 generic argument but 2 generic arguments were 
+supplied
+  --> api\src\state.rs:67:10
+   |
+67 |     ) -> Result<Self, shared::error::RegistryError> {
+   |          ^^^^^^     ------------------------------ help: remove the 
+unnecessary generic argument
+   |          |
+   |          expected 1 generic argument
+   |
+note: type alias defined here, with 1 generic parameter: `T`
+  --> C:\Users\WALZEEM\Soroban-Registry\backend\shared\src\error.rs:53:10
+   |
+53 | pub type Result<T> = std::result::Result<T, RegistryError>;
+   |          ^^^^^^ -
+
+error[E0277]: the trait bound `for<'a> shared::Tag: sqlx::Decode<'a, 
+sqlx::Postgres>` is not satisfied
+   --> api\src\backup_handlers.rs:29:10
+    |
+29  |         .fetch_optional(&state.db)
+    |          ^^^^^^^^^^^^^^ the trait `for<'a> sqlx::Decode<'a, 
+sqlx::Postgres>` is not implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait `sqlx::Decode<'r, DB>`:
+              `&'a str` implements `sqlx::Decode<'a, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `&'r serde_json::value::RawValue` implements `sqlx::Decode<'r, 
+DB>`
+              `&'r str` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `()` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+            and 99 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Decode<'_, sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, 
+A>::fetch_optional`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_optional`
+...
+185 |     pub async fn fetch_optional<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Option<O>, Error>
+    |                  -------------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `shared::Tag: sqlx::Type<sqlx::Postgres>` is not 
+satisfied
+   --> api\src\backup_handlers.rs:29:10
+    |
+29  |         .fetch_optional(&state.db)
+    |          ^^^^^^^^^^^^^^ the trait `sqlx::Type<sqlx::Postgres>` is not 
+implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait `sqlx::Type<DB>`:
+              `&T` implements `sqlx::Type<DB>`
+              `()` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6)` implements 
+`sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements 
+`sqlx::Type<sqlx::Postgres>`
+            and 102 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Decode<'_, sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, 
+A>::fetch_optional`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_optional`
+...
+185 |     pub async fn fetch_optional<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Option<O>, Error>
+    |                  -------------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `shared::Tag: 
+sqlx::sqlx_postgres::PgHasArrayType` is not satisfied
+   --> api\src\backup_handlers.rs:29:10
+    |
+29  |         .fetch_optional(&state.db)
+    |          ^^^^^^^^^^^^^^ the trait `sqlx::sqlx_postgres::PgHasArrayType` 
+is not implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait 
+`sqlx::sqlx_postgres::PgHasArrayType`:
+              &T
+              &[u8]
+              &str
+              (T1, T2)
+              (T1, T2, T3)
+              (T1, T2, T3, T4)
+              (T1, T2, T3, T4, T5)
+              (T1, T2, T3, T4, T5, T6)
+            and 88 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Type<sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, 
+A>::fetch_optional`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_optional`
+...
+185 |     pub async fn fetch_optional<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Option<O>, Error>
+    |                  -------------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `for<'a> shared::Tag: sqlx::Decode<'a, 
+sqlx::Postgres>` is not satisfied
+   --> api\src\backup_handlers.rs:27:38
+    |
+27  |     let contract: shared::Contract = sqlx::query_as("SELECT * FROM 
+contracts WHERE id = $1")
+    |                                      
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `for<'a> 
+sqlx::Decode<'a, sqlx::Postgres>` is not implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait `sqlx::Decode<'r, DB>`:
+              `&'a str` implements `sqlx::Decode<'a, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `&'r serde_json::value::RawValue` implements `sqlx::Decode<'r, 
+DB>`
+              `&'r str` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `()` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+            and 99 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Decode<'_, sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query_as`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -> QueryAs<'q, DB, O, <DB as 
+Database>::Arguments<'q>>
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+
+error[E0277]: the trait bound `shared::Tag: sqlx::Type<sqlx::Postgres>` is not 
+satisfied
+   --> api\src\backup_handlers.rs:27:38
+    |
+27  |     let contract: shared::Contract = sqlx::query_as("SELECT * FROM 
+contracts WHERE id = $1")
+    |                                      
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait 
+`sqlx::Type<sqlx::Postgres>` is not implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait `sqlx::Type<DB>`:
+              `&T` implements `sqlx::Type<DB>`
+              `()` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6)` implements 
+`sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements 
+`sqlx::Type<sqlx::Postgres>`
+            and 102 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Decode<'_, sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query_as`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -> QueryAs<'q, DB, O, <DB as 
+Database>::Arguments<'q>>
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+
+error[E0277]: the trait bound `shared::Tag: 
+sqlx::sqlx_postgres::PgHasArrayType` is not satisfied
+   --> api\src\backup_handlers.rs:27:38
+    |
+27  |     let contract: shared::Contract = sqlx::query_as("SELECT * FROM 
+contracts WHERE id = $1")
+    |                                      
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait 
+`sqlx::sqlx_postgres::PgHasArrayType` is not implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait 
+`sqlx::sqlx_postgres::PgHasArrayType`:
+              &T
+              &[u8]
+              &str
+              (T1, T2)
+              (T1, T2, T3)
+              (T1, T2, T3, T4)
+              (T1, T2, T3, T4, T5)
+              (T1, T2, T3, T4, T5, T6)
+            and 88 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Type<sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query_as`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -> QueryAs<'q, DB, O, <DB as 
+Database>::Arguments<'q>>
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+
+error[E0308]: mismatched types
+   --> api\src\contract_events.rs:485:43
+    |
+485 |                         if filter.matches(&event) {
+    |                                   ------- ^^^^^^ expected 
+`&ContractEventEnvelope`, found `&RealtimeEvent`
+    |                                   |
+    |                                   arguments to this method are incorrect
+    |
+    = note: expected reference `&contract_events::ContractEventEnvelope`
+               found reference `&state::RealtimeEvent`
+note: method defined here
+   --> api\src\contract_events.rs:271:8
+    |
+271 |     fn matches(&self, event: &ContractEventEnvelope) -> bool {
+    |        ^^^^^^^        -----------------------------
+
+error[E0308]: mismatched types
+   --> api\src\contract_events.rs:486:69
+    |
+486 | ...                   let msg = ServerMessage::Event { event: 
+event.clone() };
+    |                                                               
+^^^^^^^^^^^^^ expected `Arc<ContractEventEnvelope>`, found `RealtimeEvent`
+    |
+    = note: expected struct 
+`std::sync::Arc<contract_events::ContractEventEnvelope>`
+                 found enum `state::RealtimeEvent`
+
+error[E0277]: the trait bound `for<'a> shared::Tag: sqlx::Decode<'a, 
+sqlx::Postgres>` is not satisfied
+   --> api\src\health_monitor.rs:119:10
+    |
+119 |         .fetch_all(pool)
+    |          ^^^^^^^^^ the trait `for<'a> sqlx::Decode<'a, sqlx::Postgres>` 
+is not implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait `sqlx::Decode<'r, DB>`:
+              `&'a str` implements `sqlx::Decode<'a, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `&'r serde_json::value::RawValue` implements `sqlx::Decode<'r, 
+DB>`
+              `&'r str` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `()` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+            and 99 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Decode<'_, sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, A>::fetch_all`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_all`
+...
+137 |     pub async fn fetch_all<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Vec<O>, Error>
+    |                  --------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `shared::Tag: sqlx::Type<sqlx::Postgres>` is not 
+satisfied
+   --> api\src\health_monitor.rs:119:10
+    |
+119 |         .fetch_all(pool)
+    |          ^^^^^^^^^ the trait `sqlx::Type<sqlx::Postgres>` is not 
+implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait `sqlx::Type<DB>`:
+              `&T` implements `sqlx::Type<DB>`
+              `()` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6)` implements 
+`sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements 
+`sqlx::Type<sqlx::Postgres>`
+            and 102 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Decode<'_, sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, A>::fetch_all`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_all`
+...
+137 |     pub async fn fetch_all<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Vec<O>, Error>
+    |                  --------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `shared::Tag: 
+sqlx::sqlx_postgres::PgHasArrayType` is not satisfied
+   --> api\src\health_monitor.rs:119:10
+    |
+119 |         .fetch_all(pool)
+    |          ^^^^^^^^^ the trait `sqlx::sqlx_postgres::PgHasArrayType` is 
+not implemented for `shared::Tag`
+    |
+    = help: the following other types implement trait 
+`sqlx::sqlx_postgres::PgHasArrayType`:
+              &T
+              &[u8]
+              &str
+              (T1, T2)
+              (T1, T2, T3)
+              (T1, T2, T3, T4)
+              (T1, T2, T3, T4, T5)
+              (T1, T2, T3, T4, T5, T6)
+            and 88 others
+    = note: required for `std::vec::Vec<shared::Tag>` to implement 
+`sqlx::Type<sqlx::Postgres>`
+    = note: required for `shared::Contract` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, A>::fetch_all`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_all`
+...
+137 |     pub async fn fetch_all<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Vec<O>, Error>
+    |                  --------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `for<'r> shared::SecurityScanSummary: 
+sqlx::FromRow<'r, _>` is not satisfied
+   --> api\src\security_scan_handlers.rs:113:37
+    |
+113 |     let scans = sqlx::query_as::<_, SecurityScanSummary>(&format!(
+    |                                     ^^^^^^^^^^^^^^^^^^^ the trait 
+`for<'r> sqlx::FromRow<'r, _>` is not implemented for 
+`shared::SecurityScanSummary`
+    |
+    = help: the following other types implement trait `sqlx::FromRow<'r, R>`:
+              `()` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6, T7, T8)` implements `sqlx::FromRow<'r, 
+R>`
+            and 95 others
+note: required by a bound in `sqlx::query_as`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -> QueryAs<'q, DB, O, <DB as 
+Database>::Arguments<'q>>
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+
+error[E0599]: the method `fetch_all` exists for struct `QueryAs<'_, Postgres, 
+SecurityScanSummary, PgArguments>`, but its trait bounds were not satisfied
+    --> api\src\security_scan_handlers.rs:120:6
+     |
+113  |       let scans = sqlx::query_as::<_, SecurityScanSummary>(&format!(
+     |  _________________-
+114  | |         "{} ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+115  | |         base_query
+116  | |     ))
+...    |
+119  | |     .bind(offset)
+120  | |     .fetch_all(&state.db)
+     | |     -^^^^^^^^^ method cannot be called due to unsatisfied trait bounds
+     | |_____|
+     |
+     |
+    ::: C:\Users\WALZEEM\Soroban-Registry\backend\shared\src\models.rs:3673:1
+     |
+3673 |   pub struct SecurityScanSummary {
+     |   ------------------------------ doesn't satisfy `_: FromRow<'r, PgRow>`
+     |
+     = note: the following trait bounds were not satisfied:
+             `shared::SecurityScanSummary: sqlx::FromRow<'r, 
+sqlx::sqlx_postgres::PgRow>`
+
+error[E0277]: the trait bound `for<'r> shared::SecurityScanSummary: 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>` is not satisfied
+   --> api\src\security_scan_handlers.rs:182:6
+    |
+182 |     .fetch_optional(&state.db)
+    |      ^^^^^^^^^^^^^^ the trait `for<'r> sqlx::FromRow<'r, 
+sqlx::sqlx_postgres::PgRow>` is not implemented for 
+`shared::SecurityScanSummary`
+    |
+    = help: the following other types implement trait `sqlx::FromRow<'r, R>`:
+              `()` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6, T7, T8)` implements `sqlx::FromRow<'r, 
+R>`
+            and 95 others
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, 
+A>::fetch_optional`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_optional`
+...
+185 |     pub async fn fetch_optional<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Option<O>, Error>
+    |                  -------------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `for<'r> shared::SecurityScanSummary: 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>` is not satisfied
+   --> api\src\security_scan_handlers.rs:170:52
+    |
+170 |       let latest_scan: Option<SecurityScanSummary> = sqlx::query_as(
+    |  ____________________________________________________^
+171 | |         r#"
+172 | |         SELECT 
+173 | |             id, status, scan_type, total_issues, critical_issues, 
+...   |
+179 | |         "#,
+180 | |     )
+    | |_____^ the trait `for<'r> sqlx::FromRow<'r, 
+sqlx::sqlx_postgres::PgRow>` is not implemented for 
+`shared::SecurityScanSummary`
+    |
+    = help: the following other types implement trait `sqlx::FromRow<'r, R>`:
+              `()` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6, T7, T8)` implements `sqlx::FromRow<'r, 
+R>`
+            and 95 others
+note: required by a bound in `sqlx::query_as`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -> QueryAs<'q, DB, O, <DB as 
+Database>::Arguments<'q>>
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+
+error[E0308]: mismatched types
+   --> api\src\security_scan_handlers.rs:233:9
+    |
+233 |         contract_name,
+    |         ^^^^^^^^^^^^^ expected `String`, found `Option<String>`
+    |
+    = note: expected struct `std::string::String`
+                 found enum `std::option::Option<std::string::String>`
+help: consider using `Option::expect` to unwrap the 
+`std::option::Option<std::string::String>` value, panicking if the value is an 
+`Option::None`
+    |
+233 |         contract_name: contract_name.expect("REASON"),
+    |                      ++++++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `shared::SecurityIssue: sqlx::Decode<'_, 
+sqlx::Postgres>` is not satisfied
+   --> api\src\security_scan_handlers.rs:308:6
+    |
+308 |     .fetch_optional(&state.db)
+    |      ^^^^^^^^^^^^^^ the trait `sqlx::Decode<'_, sqlx::Postgres>` is not 
+implemented for `shared::SecurityIssue`
+    |
+    = help: the following other types implement trait `sqlx::Decode<'r, DB>`:
+              `&'a str` implements `sqlx::Decode<'a, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `&'r serde_json::value::RawValue` implements `sqlx::Decode<'r, 
+DB>`
+              `&'r str` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `()` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+            and 99 others
+    = note: required for `(shared::SecurityIssue, 
+std::option::Option<shared::IssueStatus>)` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, 
+A>::fetch_optional`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_optional`
+...
+185 |     pub async fn fetch_optional<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Option<O>, Error>
+    |                  -------------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `shared::SecurityIssue: 
+sqlx::Type<sqlx::Postgres>` is not satisfied
+   --> api\src\security_scan_handlers.rs:308:6
+    |
+308 |     .fetch_optional(&state.db)
+    |      ^^^^^^^^^^^^^^ the trait `sqlx::Type<sqlx::Postgres>` is not 
+implemented for `shared::SecurityIssue`
+    |
+    = help: the following other types implement trait `sqlx::Type<DB>`:
+              `&T` implements `sqlx::Type<DB>`
+              `()` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6)` implements 
+`sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements 
+`sqlx::Type<sqlx::Postgres>`
+            and 102 others
+    = note: required for `(shared::SecurityIssue, 
+std::option::Option<shared::IssueStatus>)` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, 
+A>::fetch_optional`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:86:23
+    |
+86  |     O: Send + Unpin + for<'r> FromRow<'r, DB::Row>,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this 
+bound in `QueryAs::<'q, DB, O, A>::fetch_optional`
+...
+185 |     pub async fn fetch_optional<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<Option<O>, Error>
+    |                  -------------- required by a bound in this associated 
+function
+
+error[E0277]: the trait bound `shared::SecurityIssue: sqlx::Decode<'_, 
+sqlx::Postgres>` is not satisfied
+   --> api\src\security_scan_handlers.rs:303:74
+    |
+303 |       let existing: Option<(shared::SecurityIssue, Option<IssueStatus>)> 
+= sqlx::query_as(
+    |  
+__________________________________________________________________________^
+304 | |         "SELECT *, NULL::issue_status_type as \"_\" FROM 
+security_issues WHERE id = $1 AND contract_id = $2",
+305 | |     )
+    | |_____^ the trait `sqlx::Decode<'_, sqlx::Postgres>` is not implemented 
+for `shared::SecurityIssue`
+    |
+    = help: the following other types implement trait `sqlx::Decode<'r, DB>`:
+              `&'a str` implements `sqlx::Decode<'a, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Any>`
+              `&'r [u8]` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `&'r serde_json::value::RawValue` implements `sqlx::Decode<'r, 
+DB>`
+              `&'r str` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `()` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Decode<'r, sqlx::Postgres>`
+            and 99 others
+    = note: required for `(shared::SecurityIssue, 
+std::option::Option<shared::IssueStatus>)` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query_as`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -> QueryAs<'q, DB, O, <DB as 
+Database>::Arguments<'q>>
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+
+error[E0277]: the trait bound `shared::SecurityIssue: 
+sqlx::Type<sqlx::Postgres>` is not satisfied
+   --> api\src\security_scan_handlers.rs:303:74
+    |
+303 |       let existing: Option<(shared::SecurityIssue, Option<IssueStatus>)> 
+= sqlx::query_as(
+    |  
+__________________________________________________________________________^
+304 | |         "SELECT *, NULL::issue_status_type as \"_\" FROM 
+security_issues WHERE id = $1 AND contract_id = $2",
+305 | |     )
+    | |_____^ the trait `sqlx::Type<sqlx::Postgres>` is not implemented for 
+`shared::SecurityIssue`
+    |
+    = help: the following other types implement trait `sqlx::Type<DB>`:
+              `&T` implements `sqlx::Type<DB>`
+              `()` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6)` implements 
+`sqlx::Type<sqlx::Postgres>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements 
+`sqlx::Type<sqlx::Postgres>`
+            and 102 others
+    = note: required for `(shared::SecurityIssue, 
+std::option::Option<shared::IssueStatus>)` to implement `for<'r> 
+sqlx::FromRow<'r, sqlx::sqlx_postgres::PgRow>`
+note: required by a bound in `sqlx::query_as`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -> QueryAs<'q, DB, O, <DB as 
+Database>::Arguments<'q>>
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+
+error[E0277]: the trait bound `&state::AppState: sqlx::Executor<'_>` is not 
+satisfied
+   --> api\src\security_scan_handlers.rs:436:16
+    |
+436 |     .fetch_one(state)
+    |      --------- ^^^^^ the trait `sqlx::Executor<'_>` is not implemented 
+for `&state::AppState`
+    |      |
+    |      required by a bound introduced by this call
+    |
+    = help: the following other types implement trait `sqlx::Executor<'c>`:
+              `&'c mut sqlx::AnyConnection` implements `sqlx::Executor<'c>`
+              `&'c mut sqlx::PgConnection` implements `sqlx::Executor<'c>`
+              `&'c mut sqlx::sqlx_postgres::PgListener` implements 
+`sqlx::Executor<'c>`
+              `&sqlx::Pool<DB>` implements `sqlx::Executor<'p>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, A>::fetch_one`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:163:17
+    |
+160 |     pub async fn fetch_one<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<O, Error>
+    |                  --------- required by a bound in this associated 
+function
+...
+163 |         E: 'e + Executor<'c, Database = DB>,
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in 
+`QueryAs::<'q, DB, O, A>::fetch_one`
+
+error[E0277]: the trait bound `&state::AppState: sqlx::Executor<'_>` is not 
+satisfied
+   --> api\src\security_scan_handlers.rs:426:16
+    |
+426 |       let scan = sqlx::query_as::<_, SecurityScan>(
+    |  ________________^
+427 | |         r#"
+428 | |         INSERT INTO security_scans
+429 | |         (contract_id, contract_version_id, status, scan_type, 
+triggered_by_event, created_at, updated_at)
+...   |
+435 | |     .bind(contract_version_id)
+436 | |     .fetch_one(state)
+    | |_____________________^ the trait `sqlx::Executor<'_>` is not 
+implemented for `&state::AppState`
+    |
+    = help: the following other types implement trait `sqlx::Executor<'c>`:
+              `&'c mut sqlx::AnyConnection` implements `sqlx::Executor<'c>`
+              `&'c mut sqlx::PgConnection` implements `sqlx::Executor<'c>`
+              `&'c mut sqlx::sqlx_postgres::PgListener` implements 
+`sqlx::Executor<'c>`
+              `&sqlx::Pool<DB>` implements `sqlx::Executor<'p>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, A>::fetch_one`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:163:17
+    |
+160 |     pub async fn fetch_one<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<O, Error>
+    |                  --------- required by a bound in this associated 
+function
+...
+163 |         E: 'e + Executor<'c, Database = DB>,
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in 
+`QueryAs::<'q, DB, O, A>::fetch_one`
+
+error[E0277]: the trait bound `&state::AppState: sqlx::Executor<'_>` is not 
+satisfied
+   --> api\src\security_scan_handlers.rs:437:6
+    |
+437 |     .await
+    |      ^^^^^ the trait `sqlx::Executor<'_>` is not implemented for 
+`&state::AppState`
+    |
+    = help: the following other types implement trait `sqlx::Executor<'c>`:
+              `&'c mut sqlx::AnyConnection` implements `sqlx::Executor<'c>`
+              `&'c mut sqlx::PgConnection` implements `sqlx::Executor<'c>`
+              `&'c mut sqlx::sqlx_postgres::PgListener` implements 
+`sqlx::Executor<'c>`
+              `&sqlx::Pool<DB>` implements `sqlx::Executor<'p>`
+note: required by a bound in `sqlx::query::QueryAs::<'q, DB, O, A>::fetch_one`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:163:17
+    |
+160 |     pub async fn fetch_one<'e, 'c: 'e, E>(self, executor: E) -> 
+Result<O, Error>
+    |                  --------- required by a bound in this associated 
+function
+...
+163 |         E: 'e + Executor<'c, Database = DB>,
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in 
+`QueryAs::<'q, DB, O, A>::fetch_one`
+
+error[E0062]: field `contract_events` specified more than once
+   --> api\src\state.rs:102:13
+    |
+93  |             contract_events,
+    |             --------------- first use of `contract_events`
+...
+102 |             contract_events: Arc::new(ContractEventHub::from_env()),
+    |             ^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `source_storage` specified more than once
+   --> api\src\state.rs:103:13
+    |
+100 |             source_storage,
+    |             -------------- first use of `source_storage`
+...
+103 |             source_storage: Arc::new(
+    |             ^^^^^^^^^^^^^^ used more than once
+
+error[E0277]: the trait bound `for<'r> shared::ContractSubscriptionSummary: 
+sqlx::FromRow<'r, _>` is not satisfied
+   --> api\src\subscription_handlers.rs:142:45
+    |
+142 |     let subscriptions = sqlx::query_as::<_, 
+ContractSubscriptionSummary>(&format!(
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+the trait `for<'r> sqlx::FromRow<'r, _>` is not implemented for 
+`shared::ContractSubscriptionSummary`
+    |
+    = help: the following other types implement trait `sqlx::FromRow<'r, R>`:
+              `()` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6, T7)` implements `sqlx::FromRow<'r, R>`
+              `(T1, T2, T3, T4, T5, T6, T7, T8)` implements `sqlx::FromRow<'r, 
+R>`
+            and 95 others
+note: required by a bound in `sqlx::query_as`
+   --> C:\Users\WALZEEM\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sq
+lx-core-0.8.6\src\query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -> QueryAs<'q, DB, O, <DB as 
+Database>::Arguments<'q>>
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+
+error[E0599]: the method `fetch_all` exists for struct 
+`sqlx::query::QueryAs<'_, _, shared::ContractSubscriptionSummary, _>`, but its 
+trait bounds were not satisfied
+    --> api\src\subscription_handlers.rs:168:6
+     |
+142  |       let subscriptions = sqlx::query_as::<_, 
+ContractSubscriptionSummary>(&format!(
+     |  _________________________-
+143  | |         r#"
+144  | |         SELECT 
+145  | |             cs.id,
+...    |
+167  | |     .bind(offset)
+168  | |     .fetch_all(&state.db)
+     | |     -^^^^^^^^^ method cannot be called due to unsatisfied trait bounds
+     | |_____|
+     |
+     |
+    ::: C:\Users\WALZEEM\Soroban-Registry\backend\shared\src\models.rs:3865:1
+     |
+3865 |   pub struct ContractSubscriptionSummary {
+     |   -------------------------------------- doesn't satisfy `_: 
+FromRow<'r, _>`
+     |
+     = note: the following trait bounds were not satisfied:
+             `shared::ContractSubscriptionSummary: sqlx::FromRow<'r, _>`
+
+error[E0277]: `shared::SubscriptionStatus` doesn't implement 
+`std::fmt::Display`
+   --> api\src\subscription_handlers.rs:206:47
+    |
+206 |         updates.push(format!("status = '{}'", status));
+    |                                         --    ^^^^^^ 
+`shared::SubscriptionStatus` cannot be formatted with the default formatter
+    |                                         |
+    |                                         required by this formatting 
+parameter
+    |
+    = help: the trait `std::fmt::Display` is not implemented for 
+`shared::SubscriptionStatus`
+    = note: in format strings you may be able to use `{:?}` (or {:#?} for 
+pretty-print) instead
+    = note: required for `&shared::SubscriptionStatus` to implement 
+`std::fmt::Display`
+    = note: this error originates in the macro `$crate::__export::format_args` 
+which comes from the expansion of the macro `format` (in Nightly builds, run 
+with -Z macro-backtrace for more info)
+
+error[E0277]: `shared::NotificationFrequency` doesn't implement 
+`std::fmt::Display`
+   --> api\src\subscription_handlers.rs:215:50
+    |
+215 |         updates.push(format!("frequency = '{}'", frequency));
+    |                                            --    ^^^^^^^^^ 
+`shared::NotificationFrequency` cannot be formatted with the default formatter
+    |                                            |
+    |                                            required by this formatting 
+parameter
+    |
+    = help: the trait `std::fmt::Display` is not implemented for 
+`shared::NotificationFrequency`
+    = note: in format strings you may be able to use `{:?}` (or {:#?} for 
+pretty-print) instead
+    = note: required for `&shared::NotificationFrequency` to implement 
+`std::fmt::Display`
+    = note: this error originates in the macro `$crate::__export::format_args` 
+which comes from the expansion of the macro `format` (in Nightly builds, run 
+with -Z macro-backtrace for more info)
+
+error[E0277]: `shared::IssueSeverity` doesn't implement `std::fmt::Display`
+   --> api\src\subscription_handlers.rs:218:53
+    |
+218 |         updates.push(format!("min_severity = '{}'", min_severity));
+    |                                               --    ^^^^^^^^^^^^ 
+`shared::IssueSeverity` cannot be formatted with the default formatter
+    |                                               |
+    |                                               required by this 
+formatting parameter
+    |
+    = help: the trait `std::fmt::Display` is not implemented for 
+`shared::IssueSeverity`
+    = note: in format strings you may be able to use `{:?}` (or {:#?} for 
+pretty-print) instead
+    = note: required for `&shared::IssueSeverity` to implement 
+`std::fmt::Display`
+    = note: this error originates in the macro `$crate::__export::format_args` 
+which comes from the expansion of the macro `format` (in Nightly builds, run 
+with -Z macro-backtrace for more info)
+
+error[E0061]: this function takes 2 arguments but 1 argument was supplied
+   --> api\src\subscription_handlers.rs:224:20
+    |
+224 |         return Err(ApiError::bad_request("No fields to update"));
+    |                    ^^^^^^^^^^^^^^^^^^^^^----------------------- argument 
+#2 is missing
+    |
+note: associated function defined here
+   --> api\src\error.rs:89:12
+    |
+89  |     pub fn bad_request(error: impl Into<String>, message: impl 
+Into<String>) -> Self {
+    |            ^^^^^^^^^^^                           
+--------------------------
+help: provide the argument
+    |
+224 |         return Err(ApiError::bad_request("No fields to update", /* 
+message */));
+    |                                                               
++++++++++++++++
+
+error[E0061]: this function takes 2 arguments but 1 argument was supplied
+   --> api\src\subscription_handlers.rs:327:20
+    |
+327 |         return Err(ApiError::bad_request("No fields to update"));
+    |                    ^^^^^^^^^^^^^^^^^^^^^----------------------- argument 
+#2 is missing
+    |
+note: associated function defined here
+   --> api\src\error.rs:89:12
+    |
+89  |     pub fn bad_request(error: impl Into<String>, message: impl 
+Into<String>) -> Self {
+    |            ^^^^^^^^^^^                           
+--------------------------
+help: provide the argument
+    |
+327 |         return Err(ApiError::bad_request("No fields to update", /* 
+message */));
+    |                                                               
++++++++++++++++
+
+error[E0308]: mismatched types
+  --> api\src\contract_events.rs:56:19
+   |
+56 |             tags: contract.tags.clone(),
+   |                   ^^^^^^^^^^^^^^^^^^^^^ expected `Vec<String>`, found 
+`Vec<Tag>`
+   |
+   = note: expected struct `std::vec::Vec<std::string::String>`
+              found struct `std::vec::Vec<shared::Tag>`
+
+error[E0062]: field `contract_events` specified more than once
+  --> api\src\state.rs:57:5
+   |
+48 |     pub contract_events: Arc<ContractEventHub>,
+   |     ------------------------------------------ first use of 
+`contract_events`
+...
+57 |     pub contract_events: Arc<ContractEventHub>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used more than once
+
+error[E0062]: field `source_storage` specified more than once
+  --> api\src\state.rs:58:5
+   |
+55 |     pub source_storage: Arc<SourceStorage>,
+   |     -------------------------------------- first use of `source_storage`
+...
+58 |     pub source_storage: Arc<shared::source_storage::SourceStorage>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ used 
+more than once
+
+   Compiling clap_derive v4.6.0
+Some errors have detailed explanations: E0061, E0062, E0107, E0124, E0252, 
+E0277, E0308, E0412, E0599.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `api` (lib) due to 63 previous errors
+warning: build failed, waiting for other jobs to finish...

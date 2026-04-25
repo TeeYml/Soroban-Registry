@@ -11,12 +11,14 @@
 //!                                       trending-by-category identification.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
-use chrono::NaiveDate;
-use serde::Serialize;
-use shared::{DeploymentStats, InteractorStats, TopUser};
+use chrono::{Duration, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
+use shared::{DeploymentStats, InteractorStats, Network, TopUser};
+use sqlx::FromRow;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 use crate::{
@@ -77,6 +79,84 @@ pub struct NetworkAnalytics {
 pub struct AnalyticsSummaryResponse {
     pub by_category: Vec<CategoryAnalytics>,
     pub by_network: Vec<NetworkAnalytics>,
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct AnalyticsTimeSeriesQuery {
+    /// Inclusive start date (YYYY-MM-DD). Defaults to 30 days before end_date.
+    pub start_date: Option<NaiveDate>,
+    /// Inclusive end date (YYYY-MM-DD). Defaults to today (UTC).
+    pub end_date: Option<NaiveDate>,
+    /// Grouping dimension: network, category, or publisher. Defaults to network.
+    pub group_by: Option<String>,
+    /// Optional contract network filter.
+    pub network: Option<Network>,
+    /// Optional category filter.
+    pub category: Option<String>,
+    /// Optional publisher UUID filter.
+    pub publisher_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct AnalyticsTimeSeriesPoint {
+    pub date: NaiveDate,
+    pub deployments: i64,
+    pub verifications: i64,
+    pub updates: i64,
+    pub total_events: i64,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct AnalyticsTimeSeriesGroup {
+    pub key: String,
+    pub points: Vec<AnalyticsTimeSeriesPoint>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct AnalyticsTimeSeriesResponse {
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    pub group_by: String,
+    pub series: Vec<AnalyticsTimeSeriesGroup>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TimeSeriesGroupBy {
+    Network,
+    Category,
+    Publisher,
+}
+
+impl TimeSeriesGroupBy {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Network => "network",
+            Self::Category => "category",
+            Self::Publisher => "publisher",
+        }
+    }
+
+    fn parse(raw: Option<&str>) -> ApiResult<Self> {
+        match raw.unwrap_or("network") {
+            "network" => Ok(Self::Network),
+            "category" => Ok(Self::Category),
+            "publisher" => Ok(Self::Publisher),
+            _ => Err(ApiError::bad_request(
+                "InvalidGroupBy",
+                "group_by must be one of: network, category, publisher",
+            )),
+        }
+    }
+}
+
+#[derive(Debug, FromRow)]
+struct AnalyticsTimeSeriesRow {
+    day: NaiveDate,
+    group_key: String,
+    deployments: i64,
+    verifications: i64,
+    updates: i64,
+    total_events: i64,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -401,6 +481,184 @@ pub async fn get_analytics_summary(
     Ok(Json(AnalyticsSummaryResponse {
         by_category,
         by_network,
+    }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/timeseries",
+    params(AnalyticsTimeSeriesQuery),
+    responses(
+        (status = 200, description = "Daily analytics aggregates grouped by dimension", body = AnalyticsTimeSeriesResponse),
+        (status = 400, description = "Invalid query parameters")
+    ),
+    tag = "Analytics"
+)]
+pub async fn get_analytics_timeseries(
+    State(state): State<AppState>,
+    Query(query): Query<AnalyticsTimeSeriesQuery>,
+) -> ApiResult<Json<AnalyticsTimeSeriesResponse>> {
+    let end_date = query.end_date.unwrap_or_else(|| Utc::now().date_naive());
+    let start_date = query
+        .start_date
+        .unwrap_or_else(|| end_date - Duration::days(30));
+
+    if start_date > end_date {
+        return Err(ApiError::bad_request(
+            "InvalidDateRange",
+            "start_date must be less than or equal to end_date",
+        ));
+    }
+
+    if (end_date - start_date).num_days() > 366 {
+        return Err(ApiError::bad_request(
+            "DateRangeTooLarge",
+            "date range cannot exceed 366 days",
+        ));
+    }
+
+    let group_by = TimeSeriesGroupBy::parse(query.group_by.as_deref())?;
+
+    let rows: Vec<AnalyticsTimeSeriesRow> = match group_by {
+        TimeSeriesGroupBy::Network => sqlx::query_as(
+            r#"
+                SELECT
+                    a.date AS day,
+                    c.network::TEXT AS group_key,
+                    COALESCE(SUM(a.deployment_count), 0)::BIGINT AS deployments,
+                    COALESCE(SUM(a.verification_count), 0)::BIGINT AS verifications,
+                    COALESCE(SUM(a.update_count), 0)::BIGINT AS updates,
+                    COALESCE(SUM(a.total_events), 0)::BIGINT AS total_events
+                FROM analytics_daily_aggregates a
+                JOIN contracts c ON c.id = a.contract_id
+                WHERE a.date BETWEEN $1 AND $2
+                  AND ($3::network_type IS NULL OR c.network = $3)
+                  AND ($4::TEXT IS NULL OR c.category = $4)
+                  AND ($5::UUID IS NULL OR c.publisher_id = $5)
+                GROUP BY a.date, c.network
+                ORDER BY a.date ASC, c.network::TEXT ASC
+                "#,
+        )
+        .bind(start_date)
+        .bind(end_date)
+        .bind(query.network)
+        .bind(query.category.as_deref())
+        .bind(query.publisher_id)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|err| db_err("fetch analytics timeseries grouped by network", err))?,
+        TimeSeriesGroupBy::Category => sqlx::query_as(
+            r#"
+                SELECT
+                    a.date AS day,
+                    COALESCE(c.category, 'uncategorized') AS group_key,
+                    COALESCE(SUM(a.deployment_count), 0)::BIGINT AS deployments,
+                    COALESCE(SUM(a.verification_count), 0)::BIGINT AS verifications,
+                    COALESCE(SUM(a.update_count), 0)::BIGINT AS updates,
+                    COALESCE(SUM(a.total_events), 0)::BIGINT AS total_events
+                FROM analytics_daily_aggregates a
+                JOIN contracts c ON c.id = a.contract_id
+                WHERE a.date BETWEEN $1 AND $2
+                  AND ($3::network_type IS NULL OR c.network = $3)
+                  AND ($4::TEXT IS NULL OR c.category = $4)
+                  AND ($5::UUID IS NULL OR c.publisher_id = $5)
+                GROUP BY a.date, COALESCE(c.category, 'uncategorized')
+                ORDER BY a.date ASC, group_key ASC
+                "#,
+        )
+        .bind(start_date)
+        .bind(end_date)
+        .bind(query.network)
+        .bind(query.category.as_deref())
+        .bind(query.publisher_id)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|err| db_err("fetch analytics timeseries grouped by category", err))?,
+        TimeSeriesGroupBy::Publisher => sqlx::query_as(
+            r#"
+                SELECT
+                    a.date AS day,
+                    COALESCE(p.stellar_address, c.publisher_id::TEXT) AS group_key,
+                    COALESCE(SUM(a.deployment_count), 0)::BIGINT AS deployments,
+                    COALESCE(SUM(a.verification_count), 0)::BIGINT AS verifications,
+                    COALESCE(SUM(a.update_count), 0)::BIGINT AS updates,
+                    COALESCE(SUM(a.total_events), 0)::BIGINT AS total_events
+                FROM analytics_daily_aggregates a
+                JOIN contracts c ON c.id = a.contract_id
+                LEFT JOIN publishers p ON p.id = c.publisher_id
+                WHERE a.date BETWEEN $1 AND $2
+                  AND ($3::network_type IS NULL OR c.network = $3)
+                  AND ($4::TEXT IS NULL OR c.category = $4)
+                  AND ($5::UUID IS NULL OR c.publisher_id = $5)
+                GROUP BY a.date, COALESCE(p.stellar_address, c.publisher_id::TEXT)
+                ORDER BY a.date ASC, group_key ASC
+                "#,
+        )
+        .bind(start_date)
+        .bind(end_date)
+        .bind(query.network)
+        .bind(query.category.as_deref())
+        .bind(query.publisher_id)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|err| db_err("fetch analytics timeseries grouped by publisher", err))?,
+    };
+
+    let mut by_group: HashMap<String, BTreeMap<NaiveDate, AnalyticsTimeSeriesPoint>> =
+        HashMap::new();
+
+    for row in rows {
+        by_group.entry(row.group_key).or_default().insert(
+            row.day,
+            AnalyticsTimeSeriesPoint {
+                date: row.day,
+                deployments: row.deployments,
+                verifications: row.verifications,
+                updates: row.updates,
+                total_events: row.total_events,
+            },
+        );
+    }
+
+    let mut series: Vec<AnalyticsTimeSeriesGroup> = by_group
+        .into_iter()
+        .map(|(key, date_map)| {
+            let mut cursor = start_date;
+            let mut points = Vec::new();
+
+            while cursor <= end_date {
+                if let Some(point) = date_map.get(&cursor) {
+                    points.push(AnalyticsTimeSeriesPoint {
+                        date: point.date,
+                        deployments: point.deployments,
+                        verifications: point.verifications,
+                        updates: point.updates,
+                        total_events: point.total_events,
+                    });
+                } else {
+                    points.push(AnalyticsTimeSeriesPoint {
+                        date: cursor,
+                        deployments: 0,
+                        verifications: 0,
+                        updates: 0,
+                        total_events: 0,
+                    });
+                }
+
+                cursor = cursor.succ_opt().expect("valid calendar date");
+            }
+
+            AnalyticsTimeSeriesGroup { key, points }
+        })
+        .collect();
+
+    series.sort_by(|a, b| a.key.cmp(&b.key));
+
+    Ok(Json(AnalyticsTimeSeriesResponse {
+        start_date,
+        end_date,
+        group_by: group_by.as_str().to_string(),
+        series,
     }))
 }
 

@@ -27,13 +27,14 @@ pub(crate) async fn get_contract_dependencies_internal(
     id: Uuid,
 ) -> ApiResult<DependencyResponse> {
     // 1. Fetch the root contract
-    let root_contract =
-        sqlx::query("SELECT id, contract_id, name, verification_status FROM contracts WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|err| db_internal_error("get root contract for dependencies", err))?
-            .ok_or_else(|| ApiError::not_found("ContractNotFound", "Contract not found"))?;
+    let root_contract = sqlx::query(
+        "SELECT id, contract_id, name, verification_status FROM contracts WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|err| db_internal_error("get root contract for dependencies", err))?
+    .ok_or_else(|| ApiError::not_found("ContractNotFound", "Contract not found"))?;
 
     let root_internal_id: Uuid = root_contract.get("id");
     let root_c_id: String = root_contract.get("contract_id");

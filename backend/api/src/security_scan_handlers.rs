@@ -38,13 +38,12 @@ pub async fn trigger_security_scan(
     Json(req): Json<TriggerSecurityScanRequest>,
 ) -> ApiResult<Json<SecurityScan>> {
     // Verify contract exists
-    let contract_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM contracts WHERE id = $1)",
-    )
-    .bind(contract_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
+    let contract_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM contracts WHERE id = $1)")
+            .bind(contract_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
 
     if !contract_exists {
         return Err(ApiError::not_found("contract", "Contract not found"));
@@ -128,10 +127,7 @@ pub async fn list_security_scans(
         .await
         .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
 
-    Ok(Json(SecurityScanHistoryResponse {
-        scans,
-        total_count,
-    }))
+    Ok(Json(SecurityScanHistoryResponse { scans, total_count }))
 }
 
 /// Get details of a specific security scan
@@ -162,12 +158,13 @@ pub async fn get_contract_security_summary(
     Path(contract_id): Path<Uuid>,
 ) -> ApiResult<Json<ContractSecuritySummary>> {
     // Get contract name
-    let contract_name: Option<String> = sqlx::query_scalar("SELECT name FROM contracts WHERE id = $1")
-        .bind(contract_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?
-        .ok_or_else(|| ApiError::not_found("contract", "Contract not found"))?;
+    let contract_name: Option<String> =
+        sqlx::query_scalar("SELECT name FROM contracts WHERE id = $1")
+            .bind(contract_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?
+            .ok_or_else(|| ApiError::not_found("contract", "Contract not found"))?;
 
     // Get latest scan
     let latest_scan: Option<SecurityScanSummary> = sqlx::query_as(
@@ -187,11 +184,12 @@ pub async fn get_contract_security_summary(
     .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
 
     // Get total scans count
-    let total_scans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM security_scans WHERE contract_id = $1")
-        .bind(contract_id)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
+    let total_scans: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM security_scans WHERE contract_id = $1")
+            .bind(contract_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
 
     // Get open issues count
     let open_issues: i64 = sqlx::query_scalar(

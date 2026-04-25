@@ -12,6 +12,15 @@ pub fn routes() -> Router<AppState> {
             post(multisig_handlers::create_policy),
         )
         .route(
+            "/api/multisig/publishers/:id/keys",
+            get(multisig_handlers::list_publisher_keys)
+                .post(multisig_handlers::create_publisher_key),
+        )
+        .route(
+            "/api/multisig/keys/:id/deactivate",
+            post(multisig_handlers::deactivate_publisher_key),
+        )
+        .route(
             "/api/multisig/proposals",
             get(multisig_handlers::list_proposals),
         )

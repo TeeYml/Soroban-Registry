@@ -1,10 +1,10 @@
 use crate::{auth::AuthClaims, error::ApiResult, handlers::db_internal_error, state::AppState};
-use chrono::Utc;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     Json,
 };
+use chrono::Utc;
 use chrono::Utc;
 use shared::{
     CreateOrganizationRequest, InviteMemberRequest, Organization, OrganizationMember,
@@ -82,19 +82,15 @@ pub async fn get_organization(
     let org_id = Uuid::parse_str(&slug_or_id).ok();
 
     let org = if let Some(id) = org_id {
-        sqlx::query_as::<_, Organization>(
-            "SELECT * FROM organizations WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_optional(&state.db)
-        .await
+        sqlx::query_as::<_, Organization>("SELECT * FROM organizations WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await
     } else {
-        sqlx::query_as::<_, Organization>(
-            "SELECT * FROM organizations WHERE slug = $1",
-        )
-        .bind(slug_or_id)
-        .fetch_optional(&state.db)
-        .await
+        sqlx::query_as::<_, Organization>("SELECT * FROM organizations WHERE slug = $1")
+            .bind(slug_or_id)
+            .fetch_optional(&state.db)
+            .await
     }
     .map_err(|e| db_internal_error("get_organization", e))?
     .ok_or_else(|| ApiError::not_found("OrganizationNotFound", "Organization not found"))?;
@@ -301,13 +297,11 @@ pub async fn accept_invitation(
     .map_err(|e| db_internal_error("add_member", e))?;
 
     // 4. Mark invitation as accepted
-    sqlx::query(
-        "UPDATE organization_invitations SET accepted_at = NOW() WHERE id = $1",
-    )
-    .bind(invite.id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| db_internal_error("mark_invite_accepted", e))?;
+    sqlx::query("UPDATE organization_invitations SET accepted_at = NOW() WHERE id = $1")
+        .bind(invite.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| db_internal_error("mark_invite_accepted", e))?;
 
     tx.commit()
         .await

@@ -1,9 +1,9 @@
 use async_graphql::dataloader::*;
+use shared::models::{Contract, ContractVersion, Organization, Publisher};
 use sqlx::PgPool;
-use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::Arc;
-use shared::models::{Contract, Publisher, Organization, ContractVersion};
+use uuid::Uuid;
 
 pub struct DbLoader {
     pub pool: PgPool,
@@ -33,11 +33,12 @@ impl Loader<Uuid> for PublisherLoader {
     type Error = Arc<sqlx::Error>;
 
     async fn load(&self, keys: &[Uuid]) -> Result<HashMap<Uuid, Self::Value>, Self::Error> {
-        let publishers: Vec<Publisher> = sqlx::query_as("SELECT * FROM publishers WHERE id = ANY($1)")
-            .bind(keys)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(Arc::new)?;
+        let publishers: Vec<Publisher> =
+            sqlx::query_as("SELECT * FROM publishers WHERE id = ANY($1)")
+                .bind(keys)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(Arc::new)?;
 
         Ok(publishers.into_iter().map(|p| (p.id, p)).collect())
     }
@@ -52,11 +53,12 @@ impl Loader<Uuid> for OrganizationLoader {
     type Error = Arc<sqlx::Error>;
 
     async fn load(&self, keys: &[Uuid]) -> Result<HashMap<Uuid, Self::Value>, Self::Error> {
-        let orgs: Vec<Organization> = sqlx::query_as("SELECT * FROM organizations WHERE id = ANY($1)")
-            .bind(keys)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(Arc::new)?;
+        let orgs: Vec<Organization> =
+            sqlx::query_as("SELECT * FROM organizations WHERE id = ANY($1)")
+                .bind(keys)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(Arc::new)?;
 
         Ok(orgs.into_iter().map(|o| (o.id, o)).collect())
     }
@@ -71,11 +73,13 @@ impl Loader<Uuid> for ContractVersionsLoader {
     type Error = Arc<sqlx::Error>;
 
     async fn load(&self, keys: &[Uuid]) -> Result<HashMap<Uuid, Self::Value>, Self::Error> {
-        let versions: Vec<ContractVersion> = sqlx::query_as("SELECT * FROM contract_versions WHERE contract_id = ANY($1) ORDER BY created_at DESC")
-            .bind(keys)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(Arc::new)?;
+        let versions: Vec<ContractVersion> = sqlx::query_as(
+            "SELECT * FROM contract_versions WHERE contract_id = ANY($1) ORDER BY created_at DESC",
+        )
+        .bind(keys)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Arc::new)?;
 
         let mut map: HashMap<Uuid, Vec<ContractVersion>> = HashMap::new();
         for v in versions {

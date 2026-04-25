@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use crate::{
     graphql::{
-        loaders::{CategoryLoader, ContractVersionsLoader, DbLoader, OrganizationLoader, PublisherLoader},
+        loaders::{
+            CategoryLoader, ContractVersionsLoader, DbLoader, OrganizationLoader, PublisherLoader,
+        },
         types::{CategoryType, ContractType, OrganizationType, PaginatedContracts, PublisherType},
     },
     state::AppState,
@@ -32,13 +34,12 @@ impl Query {
             .fetch_one(&state.db)
             .await?;
 
-        let rows: Vec<shared::models::Contract> = sqlx::query_as(
-            "SELECT * FROM contracts ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-        )
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&state.db)
-        .await?;
+        let rows: Vec<shared::models::Contract> =
+            sqlx::query_as("SELECT * FROM contracts ORDER BY created_at DESC LIMIT $1 OFFSET $2")
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?;
 
         let total_pages = if limit > 0 {
             (total as f64 / limit as f64).ceil() as i64
@@ -107,10 +108,11 @@ impl Query {
     /// List organizations.
     async fn organizations(&self, ctx: &Context<'_>) -> Result<Vec<OrganizationType>> {
         let state = ctx.data::<AppState>()?;
-        let rows: Vec<shared::models::Organization> =
-            sqlx::query_as("SELECT * FROM organizations WHERE is_private = false ORDER BY created_at DESC")
-                .fetch_all(&state.db)
-                .await?;
+        let rows: Vec<shared::models::Organization> = sqlx::query_as(
+            "SELECT * FROM organizations WHERE is_private = false ORDER BY created_at DESC",
+        )
+        .fetch_all(&state.db)
+        .await?;
         Ok(rows.into_iter().map(OrganizationType::from).collect())
     }
 }
@@ -122,23 +124,33 @@ pub fn build_schema(state: AppState) -> RegistrySchema {
     Schema::build(Query, EmptyMutation, EmptySubscription)
         .data(state.clone())
         .data(DataLoader::new(
-            DbLoader { pool: state.db.clone() },
+            DbLoader {
+                pool: state.db.clone(),
+            },
             tokio::spawn,
         ))
         .data(DataLoader::new(
-            PublisherLoader { pool: state.db.clone() },
+            PublisherLoader {
+                pool: state.db.clone(),
+            },
             tokio::spawn,
         ))
         .data(DataLoader::new(
-            OrganizationLoader { pool: state.db.clone() },
+            OrganizationLoader {
+                pool: state.db.clone(),
+            },
             tokio::spawn,
         ))
         .data(DataLoader::new(
-            ContractVersionsLoader { pool: state.db.clone() },
+            ContractVersionsLoader {
+                pool: state.db.clone(),
+            },
             tokio::spawn,
         ))
         .data(DataLoader::new(
-            CategoryLoader { pool: state.db.clone() },
+            CategoryLoader {
+                pool: state.db.clone(),
+            },
             tokio::spawn,
         ))
         .finish()

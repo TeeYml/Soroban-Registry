@@ -378,13 +378,8 @@ pub async fn save_dependencies(
     Ok(())
 }
 
-
 /// Build a localized graph around a specific contract
-pub async fn build_local_graph(
-    pool: &PgPool,
-    root_id: Uuid,
-    depth: u32,
-) -> Result<GraphResponse> {
+pub async fn build_local_graph(pool: &PgPool, root_id: Uuid, depth: u32) -> Result<GraphResponse> {
     let mut neighborhood = HashSet::new();
     neighborhood.insert(root_id);
 
