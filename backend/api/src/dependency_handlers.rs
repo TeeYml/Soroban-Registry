@@ -1,13 +1,15 @@
 use axum::{
     extract::{Path, State},
+    http::StatusCode,
     Json,
 };
-use shared::{DependencyNode, DependencyResponse};
+use shared::{ContractDependency, DependencyDeclaration, DependencyNode, DependencyResponse};
 use sqlx::Row;
 use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::{
+    dependency,
     error::{ApiError, ApiResult},
     handlers::db_internal_error,
     state::AppState,
@@ -179,6 +181,104 @@ async fn build_dependency_tree(
     }
 
     Ok(children)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #610 — Write endpoint: declare contract dependencies
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Request body for POST /api/contracts/:id/dependencies
+#[derive(Debug, serde::Deserialize)]
+pub struct DeclareDependenciesRequest {
+    pub dependencies: Vec<DependencyDeclaration>,
+}
+
+/// Response for POST /api/contracts/:id/dependencies
+#[derive(Debug, serde::Serialize)]
+pub struct DeclareDependenciesResponse {
+    pub contract_id: Uuid,
+    pub saved: Vec<ContractDependency>,
+    pub has_circular: bool,
+}
+
+/// POST /api/contracts/:id/dependencies
+///
+/// Declare (or replace) the dependency list for a contract.
+/// Circular dependencies are detected and flagged; they are stored but a warning
+/// is included in the response.  Returns 201 Created on success.
+///
+/// Issue #610: dependencies stored and retrieved correctly, circular deps detected.
+pub async fn declare_contract_dependencies(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<DeclareDependenciesRequest>,
+) -> ApiResult<(StatusCode, Json<DeclareDependenciesResponse>)> {
+    // Verify contract exists.
+    let exists: bool =
+        sqlx::query_scalar("SELECT COUNT(*) > 0 FROM contracts WHERE id = $1")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| db_internal_error("check contract exists", e))?;
+
+    if !exists {
+        return Err(ApiError::not_found("ContractNotFound", "Contract not found"));
+    }
+
+    // Pre-check for self-referential declarations.
+    let self_dep = body
+        .dependencies
+        .iter()
+        .any(|d| d.name == id.to_string());
+    if self_dep {
+        return Err(ApiError::bad_request(
+            "SelfDependency",
+            "A contract cannot declare itself as a dependency",
+        ));
+    }
+
+    // Save declarations (will detect cycles against existing graph in the DB).
+    dependency::save_dependencies(&state.db, id, &body.dependencies)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to save dependencies: {e}")))?;
+
+    // Fetch stored rows for response.
+    let saved: Vec<ContractDependency> = sqlx::query_as(
+        r#"
+        SELECT id, contract_id, dependency_name, dependency_contract_id,
+               version_constraint, created_at
+        FROM contract_dependencies
+        WHERE contract_id = $1
+        ORDER BY dependency_name
+        "#,
+    )
+    .bind(id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| db_internal_error("fetch saved dependencies", e))?;
+
+    // Detect whether any stored dep forms a cycle.
+    let mut has_circular = false;
+    for dep in &saved {
+        if let Some(dep_id) = dep.dependency_contract_id {
+            if dependency::detect_cycle(&state.db, id, dep_id)
+                .await
+                .unwrap_or(false)
+            {
+                has_circular = true;
+                break;
+            }
+        }
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(DeclareDependenciesResponse {
+            contract_id: id,
+            saved,
+            has_circular,
+        }),
+    ))
 }
 
 #[cfg(test)]

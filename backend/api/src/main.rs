@@ -41,6 +41,7 @@ mod migration_handlers;
 mod models;
 mod multisig_handlers;
 mod multisig_routes;
+mod mutation_testing_handlers; // Issue #619
 mod onchain_verification;
 #[cfg(feature = "openapi")]
 mod openapi;
@@ -61,7 +62,7 @@ mod similarity_handlers;
 mod simulation;
 mod simulation_handlers;
 mod state;
-
+mod publisher_verification_handlers; // Issue #603
 mod type_safety;
 mod validation;
 mod websocket;
@@ -270,6 +271,7 @@ async fn main() -> Result<()> {
         .merge(routes::ab_test_routes())
         .merge(routes::performance_routes())
         .merge(routes::federation_routes())
+        .merge(routes::mutation_testing_routes()) // Issue #619
         .merge(multisig_routes::routes())
         .merge(routes::observability_routes())
         .merge(routes::websocket_routes())

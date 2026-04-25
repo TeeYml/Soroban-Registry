@@ -47,9 +47,10 @@ use tokio::sync::Mutex;
 
 use crate::error::ApiError;
 
-const DEFAULT_ANON_LIMIT_PER_MINUTE: u32 = 100;
-const DEFAULT_AUTH_LIMIT_PER_MINUTE: u32 = 1_000;
-const DEFAULT_WINDOW_SECONDS: u64 = 60;
+// Issue #609: 1,000 requests per hour per IP (anonymous), 1,000 per hour authenticated
+const DEFAULT_ANON_LIMIT: u32 = 1_000;
+const DEFAULT_AUTH_LIMIT: u32 = 1_000;
+const DEFAULT_WINDOW_SECONDS: u64 = 3_600; // 1 hour
 #[allow(dead_code)]
 const DEFAULT_CONTRACTS_PAGE_SIZE: u32 = 50;
 #[allow(dead_code)]
@@ -213,19 +214,25 @@ struct RateLimitConfig {
 
 impl RateLimitConfig {
     fn from_env() -> Self {
+        // Issue #609: configurable per-IP limits; defaults to 1000 req/hour.
+        // Env vars: RATE_LIMIT_ANON_PER_HOUR (preferred) or legacy RATE_LIMIT_ANON_PER_MINUTE / RATE_LIMIT_READ_PER_MINUTE
         let anonymous_limit = env_u32_with_fallback(
+            "RATE_LIMIT_ANON_PER_HOUR",
             "RATE_LIMIT_ANON_PER_MINUTE",
-            "RATE_LIMIT_READ_PER_MINUTE",
-            DEFAULT_ANON_LIMIT_PER_MINUTE,
+            DEFAULT_ANON_LIMIT,
         );
-        let auth_limit = env_u32("RATE_LIMIT_AUTH_PER_MINUTE", DEFAULT_AUTH_LIMIT_PER_MINUTE);
+        let auth_limit = env_u32_with_fallback(
+            "RATE_LIMIT_AUTH_PER_HOUR",
+            "RATE_LIMIT_AUTH_PER_MINUTE",
+            DEFAULT_AUTH_LIMIT,
+        );
         let window_seconds = env_u64("RATE_LIMIT_WINDOW_SECONDS", DEFAULT_WINDOW_SECONDS).max(1);
 
         tracing::info!(
             anonymous_limit,
             auth_limit,
             window_seconds,
-            "Rate limiter configured"
+            "Rate limiter configured (issue #609: 1000 req/hour per IP default)"
         );
 
         Self {
@@ -506,11 +513,12 @@ mod tests {
         svc.call(request).await.unwrap()
     }
 
+    /// Issue #609: anonymous IP limited to 1,000 req/hour; 1001st gets 429.
     #[tokio::test]
-    async fn anonymous_user_gets_429_on_101st_request() {
-        let app = test_app(100, 1_000, Duration::from_secs(60));
+    async fn anonymous_user_gets_429_on_1001st_request() {
+        let app = test_app(1_000, 1_000, Duration::from_secs(3600));
 
-        for _ in 0..100 {
+        for _ in 0..1_000 {
             let response = call(
                 &app,
                 Request::builder()
