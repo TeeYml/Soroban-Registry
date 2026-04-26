@@ -172,9 +172,9 @@ impl DatabaseWriter {
 
     /// Write multiple contracts in a single transaction.
     ///
-    /// Uses a multi-row INSERT via `QueryBuilder` wrapped in a transaction
-    /// for atomicity. Duplicates (by `contract_id + network`) are silently
-    /// skipped via `ON CONFLICT DO NOTHING`.
+    /// Deployments are processed in chunks of at most `BATCH_CHUNK_SIZE` rows
+    /// per INSERT to bound the size of each `QueryBuilder` SQL string. Duplicates
+    /// (by `contract_id + network`) are silently skipped via `ON CONFLICT DO NOTHING`.
     pub async fn write_contracts_batch(
         &self,
         deployments: &[ContractDeployment],
@@ -183,6 +183,10 @@ impl DatabaseWriter {
         if deployments.is_empty() {
             return Ok((0, 0));
         }
+
+        // Cap each INSERT to prevent the QueryBuilder SQL string from growing
+        // unboundedly when a ledger contains a large burst of deployments.
+        const BATCH_CHUNK_SIZE: usize = 50;
 
         let mut tx = self.pool.begin().await.map_err(|e| {
             error!("Failed to begin transaction: {}", e);
@@ -203,45 +207,59 @@ impl DatabaseWriter {
             publisher_map.insert(deployer, publisher_id);
         }
 
-        // 2. Batch insert contracts — ON CONFLICT DO NOTHING handles duplicates
-        let mut query_builder: QueryBuilder<sqlx::Postgres> = QueryBuilder::new(
-            "INSERT INTO contracts \
-             (id, contract_id, wasm_hash, name, slug, publisher_id, network, \
-              is_verified, created_at, updated_at, deployed_at) ",
-        );
+        let mut total_new = 0usize;
 
-        query_builder.push_values(deployments.iter(), |mut b, deployment| {
-            let publisher_id = publisher_map.get(deployment.deployer.as_str()).unwrap();
-            let wasm_hash = format!("{}_{}", deployment.contract_id, deployment.op_id);
-            let slug = shared::slugify(&deployment.contract_id);
-            b.push_bind(Uuid::new_v4())
-                .push_bind(&deployment.contract_id)
-                .push_bind(wasm_hash)
-                .push_bind(&deployment.contract_id)
-                .push_bind(slug)
-                .push_bind(publisher_id)
-                .push_bind(network_str)
-                .push_bind(false)
-                .push_bind(now)
-                .push_bind(now)
-                .push_bind(chrono::DateTime::parse_from_rfc3339(&deployment.deployed_at).map(|dt| dt.with_timezone(&chrono::Utc)).unwrap_or(now));
-        });
+        // 2. Batch insert contracts in bounded chunks to cap QueryBuilder memory usage.
+        for chunk in deployments.chunks(BATCH_CHUNK_SIZE) {
+            let mut query_builder: QueryBuilder<sqlx::Postgres> = QueryBuilder::new(
+                "INSERT INTO contracts \
+                 (id, contract_id, wasm_hash, name, slug, publisher_id, network, \
+                  is_verified, created_at, updated_at, deployed_at) ",
+            );
 
-        query_builder.push(" ON CONFLICT (contract_id, network) DO NOTHING RETURNING contract_id");
+            query_builder.push_values(chunk.iter(), |mut b, deployment| {
+                let publisher_id = publisher_map.get(deployment.deployer.as_str()).unwrap();
+                let wasm_hash = format!("{}_{}", deployment.contract_id, deployment.op_id);
+                let slug = shared::slugify(&deployment.contract_id);
+                b.push_bind(Uuid::new_v4())
+                    .push_bind(&deployment.contract_id)
+                    .push_bind(wasm_hash)
+                    .push_bind(&deployment.contract_id)
+                    .push_bind(slug)
+                    .push_bind(publisher_id)
+                    .push_bind(network_str)
+                    .push_bind(false)
+                    .push_bind(now)
+                    .push_bind(now)
+                    .push_bind(
+                        chrono::DateTime::parse_from_rfc3339(&deployment.deployed_at)
+                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                            .unwrap_or(now),
+                    );
+            });
 
-        let query = query_builder.build();
-        let rows = query.fetch_all(&mut *tx).await.map_err(|e| {
-            error!("Failed to execute batch contract insert: {}", e);
-            DatabaseError::SqlError(e.to_string())
-        })?;
+            query_builder
+                .push(" ON CONFLICT (contract_id, network) DO NOTHING RETURNING contract_id");
 
-        let inserted_ids: std::collections::HashSet<String> = rows
-            .into_iter()
-            .map(|r| r.get::<String, _>("contract_id"))
-            .collect();
+            // Count returned rows directly — avoids collecting all IDs into a HashSet.
+            let chunk_new = query_builder
+                .build()
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(|e| {
+                    error!("Failed to execute batch contract insert: {}", e);
+                    DatabaseError::SqlError(e.to_string())
+                })?
+                .len();
 
-        let new_count = inserted_ids.len();
-        let duplicate_count = deployments.len() - new_count;
+            total_new += chunk_new;
+        }
+
+        // publisher_map is no longer needed; drop it before the commit so its
+        // heap allocation is released while the transaction is still open.
+        drop(publisher_map);
+
+        let duplicate_count = deployments.len() - total_new;
 
         tx.commit().await.map_err(|e| {
             error!("Failed to commit transaction: {}", e);
@@ -250,10 +268,10 @@ impl DatabaseWriter {
 
         info!(
             "Batch write complete: new={}, duplicates={}",
-            new_count, duplicate_count
+            total_new, duplicate_count
         );
 
-        Ok((new_count, duplicate_count))
+        Ok((total_new, duplicate_count))
     }
 
     /// Get or create a publisher record — transaction-scoped variant.

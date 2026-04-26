@@ -263,9 +263,12 @@ impl IndexerService {
                         "Fetched ledger operations"
                     );
 
-                    // Detect contract deployments
+                    // Detect contract deployments, then immediately drop `operations` so
+                    // the Vec of serde_json::Value bodies does not linger for the rest of
+                    // the ledger-processing block.
                     let deployments =
                         detector::detect_contract_deployments(&operations, ledger_height, &ledger.timestamp);
+                    drop(operations);
 
                     if !deployments.is_empty() {
                         info!(
