@@ -47,6 +47,7 @@ impl std::fmt::Display for ErrorCode {
 pub struct ApiError {
     status: StatusCode,
     error_code: ErrorCode,
+    code: String,
     message: String,
     details: Option<Value>,
 }
@@ -59,6 +60,8 @@ impl std::fmt::Display for ApiError {
 
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
+    code: String,
+    request_id: String,
     error_code: ErrorCode,
     message: String,
     details: Value,
@@ -66,17 +69,50 @@ struct ErrorResponse {
     correlation_id: String,
 }
 
+fn normalize_error_code(code: impl Into<String>) -> String {
+    let raw = code.into();
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return "INTERNAL_ERROR".to_string();
+    }
+
+    let mut normalized = String::with_capacity(trimmed.len() + 8);
+    for (idx, ch) in trimmed.chars().enumerate() {
+        if ch.is_ascii_alphanumeric() {
+            if ch.is_ascii_uppercase()
+                && idx > 0
+                && !normalized.ends_with('_')
+                && normalized.chars().last().is_some_and(|prev| prev.is_ascii_lowercase())
+            {
+                normalized.push('_');
+            }
+            normalized.push(ch.to_ascii_uppercase());
+        } else if !normalized.ends_with('_') {
+            normalized.push('_');
+        }
+    }
+
+    let normalized = normalized.trim_matches('_').to_string();
+    if normalized.is_empty() {
+        "INTERNAL_ERROR".to_string()
+    } else {
+        normalized
+    }
+}
+
 impl ApiError {
     pub fn new(status: StatusCode, error: impl Into<String>, message: impl Into<String>) -> Self {
         let reason = error.into();
+        let code = normalize_error_code(reason.clone());
         Self {
             status,
             error_code: ErrorCode::from_status(status),
+            code,
             message: message.into(),
             details: if reason.is_empty() {
                 None
             } else {
-                Some(json!({ "reason": reason }))
+                Some(json!({ "reason": normalize_error_code(reason) }))
             },
         }
     }
@@ -131,10 +167,24 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let correlation_id = crate::request_tracing::current_request_id()
             .unwrap_or_else(crate::request_tracing::generate_request_id);
+        let details = self.details.unwrap_or_else(|| json!({}));
+
+        tracing::error!(
+            request_id = %correlation_id,
+            status = self.status.as_u16(),
+            code = %self.code,
+            error_code = ?self.error_code,
+            details = %details,
+            message = %self.message,
+            "api_error"
+        );
+
         let payload = ErrorResponse {
+            code: self.code,
+            request_id: correlation_id.clone(),
             error_code: self.error_code,
             message: self.message,
-            details: self.details.unwrap_or_else(|| json!({})),
+            details,
             timestamp: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
             correlation_id: correlation_id.clone(),
         };
@@ -195,9 +245,11 @@ mod tests {
         let value: serde_json::Value =
             serde_json::from_slice(&body).expect("response body should be valid json");
 
+        assert_eq!(value["code"], "INVALID_INPUT");
         assert_eq!(value["error_code"], "BAD_REQUEST");
         assert_eq!(value["message"], "Invalid request payload");
         assert_eq!(value["details"]["field"], "name");
+        assert!(value["request_id"].is_string());
         assert!(value["timestamp"].is_string());
     }
 
