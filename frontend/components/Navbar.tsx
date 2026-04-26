@@ -1,6 +1,6 @@
 'use client';
 
-import { Package, GitBranch, ChevronDown, BarChart2, Users, Menu, X, Layers, Search, Plus, Columns2, ShieldCheck, PieChart, TrendingUp, LogOut, Settings, Zap, Code2, User, ShoppingCart } from 'lucide-react';
+import { Package, GitBranch, ChevronDown, BarChart2, Users, Menu, X, Layers, Search, Plus, Columns2, ShieldCheck, PieChart, TrendingUp, LogOut, Settings, Zap, Code2, User, ShoppingCart, Home, ChevronRight, Star } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -25,17 +25,10 @@ const EXPLORE_LINKS = [
     { href: '/templates',  label: 'Templates',  icon: Layers    },
 ] as const;
 
-const QUICK_LINKS = [
-    { href: '/contracts',  label: 'Browse Contracts',   icon: Package   },
-    { href: '/compare',    label: 'Compare Contracts',  icon: Columns2  },
-    { href: '/publishers', label: 'Publishers',          icon: Users     },
-    { href: '/stats',      label: 'Statistics',          icon: TrendingUp},
-    { href: '/analytics',  label: 'Analytics',           icon: PieChart  },
-    { href: '/templates',  label: 'Templates',           icon: Layers    },
-    { href: '/graph',      label: 'Dependency Graph',    icon: GitBranch },
-    { href: '/developer',  label: 'Contract IDE',        icon: Code2 },
-    { href: '/verify-contract', label: 'Verify Contract', icon: ShieldCheck },
-] as const;
+const formatBreadcrumbLabel = (segment: string) =>
+    decodeURIComponent(segment)
+        .replace(/[-_]/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
 
 /* ─── helpers ─────────────────────────────────────────────── */
 function useScrolled(threshold = 8) {
@@ -221,6 +214,7 @@ export default function Navbar() {
 
     const isActive = useCallback((href: string) => pathname === href, [pathname]);
     const isExploreActive = EXPLORE_LINKS.some(l => pathname.startsWith(l.href));
+    const mobileCrumbs = pathname.split('/').filter(Boolean).slice(0, 3);
 
     /* hover helpers */
     const onExploreEnter = () => { if (exploreTimeout.current) clearTimeout(exploreTimeout.current); setExploreOpen(true);  };
@@ -455,7 +449,7 @@ export default function Navbar() {
                             {/* Mobile search button */}
                             <button
                                 onClick={() => setSearchOpen(true)}
-                                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                                className="p-2 min-h-12 min-w-12 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                                 aria-label="Open search"
                             >
                                 <Search className="w-5 h-5" />
@@ -467,7 +461,7 @@ export default function Navbar() {
                             {/* Hamburger / close */}
                             <button
                                 onClick={() => setMobileOpen(v => !v)}
-                                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                className="p-2 min-h-12 min-w-12 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
                                 aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
                                 aria-expanded={mobileOpen}
                                 aria-controls="mobile-nav-drawer"
@@ -486,6 +480,32 @@ export default function Navbar() {
                                 </span>
                             </button>
                         </div>
+                    </div>
+
+                    {/* Mobile breadcrumb row */}
+                    <div className="md:hidden h-10 flex items-center overflow-x-auto no-scrollbar border-t border-border/60">
+                        <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+                            <Link href="/" className={`inline-flex items-center gap-1 px-1.5 py-1 rounded ${pathname === '/' ? 'text-primary font-medium' : 'hover:text-foreground'}`}>
+                                <Home className="w-3.5 h-3.5" />
+                                Home
+                            </Link>
+                            {mobileCrumbs.map((segment, index) => {
+                                const href = `/${mobileCrumbs.slice(0, index + 1).join('/')}`;
+                                const active = pathname === href;
+                                return (
+                                    <React.Fragment key={href}>
+                                        <ChevronRight className="w-3 h-3 opacity-60" aria-hidden="true" />
+                                        <Link
+                                            href={href}
+                                            className={`px-1.5 py-1 rounded ${active ? 'text-primary font-medium' : 'hover:text-foreground'}`}
+                                            aria-current={active ? 'page' : undefined}
+                                        >
+                                            {formatBreadcrumbLabel(segment)}
+                                        </Link>
+                                    </React.Fragment>
+                                );
+                            })}
+                        </nav>
                     </div>
                 </div>
             </nav>
@@ -511,7 +531,7 @@ export default function Navbar() {
                     role="dialog"
                     aria-modal="true"
                     aria-label="Mobile navigation menu"
-                    className={`absolute inset-y-0 right-0 w-[80vw] max-w-sm flex flex-col bg-card border-l border-border shadow-2xl transition-transform duration-300 ease-in-out ${
+                    className={`absolute inset-y-0 right-0 w-[85vw] max-w-sm flex flex-col bg-card border-l border-border shadow-2xl transition-transform duration-300 ease-in-out overflow-x-hidden pt-safe-top pb-safe-bottom ${
                         mobileOpen ? 'translate-x-0' : 'translate-x-full'
                     }`}
                 >
@@ -554,7 +574,7 @@ export default function Navbar() {
                                     key={href}
                                     href={href}
                                     onClick={() => setMobileOpen(false)}
-                                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                    className={`flex items-center gap-2 px-3 py-2.5 min-h-12 rounded-lg text-sm font-medium transition-all ${
                                         isActive(href)
                                             ? 'text-primary bg-primary/12 border border-primary/20'
                                             : 'text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent'
@@ -589,7 +609,7 @@ export default function Navbar() {
                                     key={href}
                                     href={href}
                                     onClick={() => setMobileOpen(false)}
-                                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                    className={`flex items-center gap-3 px-3 py-2.5 min-h-12 rounded-lg text-sm font-medium transition-all ${
                                         pathname === href
                                             ? 'text-primary bg-primary/10'
                                             : 'text-muted-foreground hover:text-foreground hover:bg-accent'
