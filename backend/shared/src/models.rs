@@ -158,6 +158,24 @@ pub struct NetworkListResponse {
     pub cached_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct NetworkHealth {
+    pub network_id: String,
+    pub name: String,
+    pub status: NetworkStatus,
+    pub rpc_available: bool,
+    pub last_indexed_ledger: Option<i64>,
+    pub current_ledger: Option<u32>,
+    pub indexer_lag: Option<i64>,
+    pub last_checked_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct NetworkHealthResponse {
+    pub health: Vec<NetworkHealth>,
+    pub timestamp: DateTime<Utc>,
+}
+
 /// Network where the contract is deployed
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema, PartialEq, Eq)]
 #[sqlx(type_name = "network_type", rename_all = "lowercase")]

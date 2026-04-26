@@ -502,6 +502,7 @@ pub fn network_routes() -> Router<AppState> {
     Router::new()
         .route("/networks", get(handlers::list_networks))
         .route("/api/networks", get(handlers::list_networks))
+        .route("/api/networks/health", get(handlers::get_network_health))
 }
 
 pub fn health_monitor_routes() -> Router<AppState> {
