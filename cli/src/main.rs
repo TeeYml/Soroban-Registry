@@ -42,6 +42,7 @@ mod shell;
 mod plugins;
 mod deploy;
 mod upgrade;
+mod compare;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -180,6 +181,25 @@ pub enum Commands {
     Info {
         /// Contract ID or slug
         id: String,
+    },
+
+    /// Compare multiple contracts
+    Compare {
+        /// Contract IDs to compare (2 to 4 contracts)
+        #[arg(required = true, num_args = 2..=4)]
+        ids: Vec<String>,
+        
+        /// Output detailed comparison as JSON
+        #[arg(long)]
+        json: bool,
+        
+        /// Export comparison report to a file (csv or json)
+        #[arg(long)]
+        export: Option<String>,
+        
+        /// Export format (csv or json). Derived from file extension if not provided.
+        #[arg(long)]
+        format: Option<String>,
     },
 
     /// Check CLI version and update availability
@@ -1632,6 +1652,9 @@ pub async fn dispatch_command(
         }
         Commands::Info { id } => {
             commands::contract_info(&cli.api_url, &id).await?;
+        }
+        Commands::Compare { ids, json, export, format } => {
+            compare::run(&cli.api_url, ids, json, export.as_deref(), format.as_deref()).await?;
         }
         Commands::Version => {
             version::check_version().await?;
