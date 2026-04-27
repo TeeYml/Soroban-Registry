@@ -32,6 +32,8 @@ interface FilterPanelProps {
   onAuthorChange: (value: string) => void;
   verifiedOnly: boolean;
   onVerifiedChange: (value: boolean) => void;
+  favoritesOnly: boolean;
+  onFavoritesChange: (value: boolean) => void;
   activeFilterCount: number;
   onResetAll: () => void;
 }
@@ -240,6 +242,8 @@ export function FilterPanel({
   onAuthorChange,
   verifiedOnly,
   onVerifiedChange,
+  favoritesOnly,
+  onFavoritesChange,
   activeFilterCount,
   onResetAll,
 }: FilterPanelProps) {
@@ -320,6 +324,27 @@ export function FilterPanel({
           {verifiedOnly && <Check className="w-3 h-3 text-white" />}
         </div>
         Verified only
+      </button>
+
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={favoritesOnly}
+        onClick={() => onFavoritesChange(!favoritesOnly)}
+        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all ${
+          favoritesOnly
+            ? "bg-yellow-500/10 text-yellow-600 font-medium"
+            : "text-muted-foreground hover:text-foreground hover:bg-accent"
+        }`}
+      >
+        <div
+          className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+            favoritesOnly ? "bg-yellow-500 border-yellow-500" : "border-border"
+          }`}
+        >
+          {favoritesOnly && <Check className="w-3 h-3 text-white" />}
+        </div>
+        Favorites only
       </button>
     </div>
   );

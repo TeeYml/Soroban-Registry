@@ -53,7 +53,9 @@ pub async fn run(
 
     if format_opt == Some("csv") || export_path.map_or(false, |p| p.ends_with(".csv")) {
         let mut csv_data = String::new();
-        let headers = ["Field"].iter().chain(ids.iter().map(|s| s.as_str())).collect::<Vec<_>>();
+        let headers: Vec<String> = std::iter::once("Field".to_string())
+            .chain(ids.iter().cloned())
+            .collect();
         csv_data.push_str(&headers.join(","));
         csv_data.push('\n');
 

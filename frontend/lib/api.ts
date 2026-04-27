@@ -22,6 +22,7 @@ import {
   extractErrorData,
   createApiError,
 } from "./errors";
+import type { VerificationLevel } from "../types/verification";
 
 export type Network = "mainnet" | "testnet" | "futurenet";
 
@@ -69,6 +70,7 @@ export interface Contract {
   publisher_id: string;
   network: Network;
   is_verified: boolean;
+  verification_level?: VerificationLevel;
   category?: string;
   tags: string[];
   popularity_score?: number;
@@ -78,6 +80,7 @@ export interface Contract {
   review_count?: number;
   deployment_count?: number;
   interaction_count?: number;
+  favorites_count?: number;
   relevance_score?: number;
   // Image fields for contract logo/icon
   logo_url?: string;
@@ -355,6 +358,8 @@ export interface ContractSearchParams {
   network?: "mainnet" | "testnet" | "futurenet";
   networks?: Array<"mainnet" | "testnet" | "futurenet">;
   verified_only?: boolean;
+  favorites_only?: boolean;
+  favorites_list?: string[];
   category?: string;
   categories?: string[];
   language?: string;
@@ -892,6 +897,10 @@ export const api = {
 
           if (params?.verified_only) {
             filtered = filtered.filter((c) => c.is_verified);
+          }
+
+          if (params?.favorites_only && params.favorites_list) {
+            filtered = filtered.filter((c) => params.favorites_list!.includes(c.id));
           }
 
           if (params?.date_from) {

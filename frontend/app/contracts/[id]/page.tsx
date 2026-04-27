@@ -39,6 +39,7 @@ import { useContractAutoRefresh } from "@/hooks/useContractAutoRefresh";
 import { ContractTimeline } from "@/components/contracts/contract-timeline";
 import ContractInteractionFlow from "@/components/contracts/ContractInteractionFlow";
 import ContractAbiMethodExplorer from "@/components/contracts/ContractAbiMethodExplorer";
+import VerificationBadge from "@/components/verification/VerificationBadge";
 
 
 const NETWORKS: Network[] = ["mainnet", "testnet", "futurenet"];
@@ -383,12 +384,11 @@ function ContractDetailsContent() {
                 <Share2 className="w-3.5 h-3.5" />
                 {copiedShareLink ? 'Link Copied' : 'Share'}
               </button>
-              {displayVerified && (
-                <span className="flex items-center gap-1 text-green-600 dark:text-green-400 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Verified
-                </span>
-              )}
+              <VerificationBadge 
+                status={displayVerified ? 'approved' : 'unverified'} 
+                level={contract.verification_level} 
+                size="md" 
+              />
             </div>
           </div>
 
@@ -754,20 +754,50 @@ function ContractDetailsContent() {
             <div className="bg-card rounded-2xl border border-border p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xl font-semibold text-foreground">Verification Status</h2>
-                <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${displayVerified ? 'border-green-500/30 bg-green-500/10 text-green-600' : 'border-amber-500/30 bg-amber-500/10 text-amber-600'}`}>
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  {displayVerified ? 'Verified' : 'Pending Verification'}
-                </span>
+                <div className="flex items-center gap-4">
+                  <VerificationBadge 
+                    status={displayVerified ? 'approved' : 'unverified'} 
+                    level={contract.verification_level} 
+                    size="md" 
+                  />
+                  {!displayVerified && (
+                    <Link
+                      href={`/verify-contract?id=${contract.id}`}
+                      className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:brightness-110 transition-all"
+                    >
+                      Submit for Verification
+                    </Link>
+                  )}
+                </div>
               </div>
               <dl className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <dt className="text-muted-foreground">Auditor</dt>
-                  <dd className="font-medium text-foreground">Automated verification pipeline</dd>
-                </div>
-                <div>
+                {displayVerified ? (
+                  <>
+                    <div>
+                      <dt className="text-muted-foreground">Auditor</dt>
+                      <dd className="font-medium text-foreground">Soroban Auto-Auditor</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Verification Date</dt>
+                      <dd className="font-medium text-foreground">{contract.verified_at ? new Date(contract.verified_at).toLocaleDateString() : 'Recent'}</dd>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <dt className="text-muted-foreground">Status</dt>
+                      <dd className="font-medium text-foreground">Not submitted</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Progress</dt>
+                      <dd className="font-medium text-foreground">0%</dd>
+                    </div>
+                  </>
+                )}
+                <div className="sm:col-span-2">
                   <dt className="text-muted-foreground">Report</dt>
                   <dd>
-                    <Link href="/verification-status" className="text-primary hover:underline">Open verification report</Link>
+                    <Link href="/verification-status" className="text-primary hover:underline">Open detailed verification report</Link>
                   </dd>
                 </div>
               </dl>

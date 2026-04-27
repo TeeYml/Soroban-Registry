@@ -14,8 +14,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::Cli;
-
 pub struct ShellContext {
     pub api_url: String,
     pub contract_id: Option<String>,

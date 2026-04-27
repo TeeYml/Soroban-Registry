@@ -36,18 +36,16 @@ mod shell;
 mod sla;
 mod table_format;
 mod test_framework;
-mod shell;
-mod track_deployment;
 mod track_deployment;
 mod webhook;
 mod wizard;
-mod shell;
 mod plugins;
 mod deploy;
 mod upgrade;
 mod compare;
 mod verification;
 mod user_config;
+mod version;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -299,14 +297,26 @@ pub enum Commands {
         contract_dir: String,
     },
 
-    /// Import a contract from an archive
+    /// Import contract data from a file (JSON, CSV, or Archive)
     Import {
-        /// Path to the archive file
-        archive: String,
+        /// Path to the import file
+        file: String,
 
-        /// Directory to extract into
+        /// Format of the file (json | csv | archive). If omitted, inferred from extension.
+        #[arg(long)]
+        format: Option<String>,
+
+        /// Directory to extract into (only for archive format)
         #[arg(long, default_value = "./imported")]
         output_dir: String,
+
+        /// Validate the data before importing
+        #[arg(long)]
+        validate: bool,
+
+        /// Perform a dry run without actually importing
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Generate documentation from a contract WASM
@@ -1413,6 +1423,22 @@ pub enum ContractCommands {
         #[arg(long)]
         json: bool,
     },
+    
+    /// Display detailed information about a contract
+    ///
+    /// Usage: soroban-registry contract details <address> --network <network> [--json]
+    Details {
+        /// On-chain contract address to inspect
+        address: String,
+
+        /// Stellar network (mainnet | testnet | futurenet)
+        #[arg(long, default_value = "mainnet")]
+        network: String,
+
+        /// Output results as machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Sub-commands for the `webhook` group
@@ -1635,6 +1661,26 @@ pub async fn dispatch_command(
             // We could call shell::run here again but to break recursion we don't.
             println!("{}", "Warning: REPL already running".yellow());
             return Ok(());
+        }
+        Commands::TrackDeployment {
+            contract_id,
+            network,
+            tx_hash,
+            wait_timeout,
+            json,
+        } => {
+            log::debug!(
+                "Command: track-deployment | contract_id={} network={} tx_hash={:?} wait_timeout={} json={}",
+                contract_id, network, tx_hash, wait_timeout, json
+            );
+            track_deployment::run(
+                &cli.api_url,
+                &contract_id,
+                &network,
+                tx_hash.as_deref(),
+                wait_timeout,
+                json,
+            ).await?;
         }
         Commands::Plugins { action } => match action {
             PluginCommands::List { json } => {
@@ -1963,15 +2009,18 @@ pub async fn dispatch_command(
             commands::export(&cli.api_url, &id, &output, &contract_dir).await?;
         }
         Commands::Import {
-            archive,
+            file,
+            format,
             output_dir,
+            validate,
+            dry_run,
         } => {
+            let network = cli.network.as_deref();
             log::debug!(
-                "Command: import | archive={} output_dir={}",
-                archive,
-                output_dir
+                "Command: import | file={} format={:?} output_dir={} validate={} dry_run={}",
+                file, format, output_dir, validate, dry_run
             );
-            commands::import(&cli.api_url, &archive, network, &output_dir).await?;
+            crate::import::run(&cli.api_url, &file, format.as_deref(), network, &output_dir, validate, dry_run).await?;
         }
         Commands::Doc {
             contract_path,
@@ -2619,6 +2668,19 @@ pub async fn dispatch_command(
                     json
                 );
                 contract_verify::run(&cli.api_url, &address, &network, json).await?;
+            }
+            ContractCommands::Details {
+                address,
+                network,
+                json,
+            } => {
+                log::debug!(
+                    "Command: contract details | address={} network={} json={}",
+                    address,
+                    network,
+                    json
+                );
+                contracts::run_details(&cli.api_url, &address, &network, json).await?;
             }
         },
         // ── Release Notes commands ───────────────────────────────────────────
