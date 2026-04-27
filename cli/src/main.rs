@@ -1,9 +1,11 @@
 #![allow(unused_variables)]
 
 mod analyze;
+mod analytics;
 mod audit_command;
 mod backup;
 mod batch_register;
+mod batch_ops;
 mod batch_verify;
 mod cicd;
 mod codegen;
@@ -44,6 +46,7 @@ mod deploy;
 mod upgrade;
 mod compare;
 mod verification;
+mod user_config;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -70,12 +73,34 @@ pub struct Cli {
     #[arg(long, short = 'v', global = true)]
     pub verbose: bool,
 
+    /// Check for CLI updates before running the command.
+    #[arg(long, global = true)]
+    pub check_updates: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// Query contract analytics and statistics
+    Analytics {
+        /// Query type: top-contracts, trending, by-category, by-network
+        query: String,
+        /// Time period: 7d, 30d, 90d, or RFC3339 range start..end
+        #[arg(long, default_value = "30d")]
+        period: String,
+        /// Output format: table, json, csv
+        #[arg(long, default_value = "table")]
+        format: String,
+        /// Sort mode: value_desc, value_asc, key_asc, key_desc
+        #[arg(long)]
+        sort: Option<String>,
+        /// Export output to a file
+        #[arg(long)]
+        export: Option<String>,
+    },
+
     /// Search for contracts in the registry
     Search {
         /// Search query
@@ -204,7 +229,17 @@ pub enum Commands {
     },
 
     /// Check CLI version and update availability
-    Version,
+    Version {
+        /// Check upstream for newer versions
+        #[arg(long, default_value_t = true)]
+        check_updates: bool,
+        /// Print update instructions immediately when newer version exists
+        #[arg(long, default_value_t = false)]
+        auto_update: bool,
+        /// Roll back to a previous version (manual install helper)
+        #[arg(long)]
+        rollback: Option<String>,
+    },
 
     /// Launch an interactive, real-time terminal dashboard
     Dashboard {
@@ -300,10 +335,31 @@ pub enum Commands {
     /// Start an interactive contract deployment workflow
     Deploy {},
 
-    /// Manage contract versions
-    Version {
+    /// Manage contract semantic versions
+    #[command(name = "versions")]
+    VersionSemver {
         #[command(subcommand)]
         action: VersionCommands,
+    },
+
+    /// Perform batch operations on multiple contracts
+    Batch {
+        /// Operation: tag, categorize, verify, deprecate
+        operation: String,
+        /// Contract IDs
+        contracts: Vec<String>,
+        /// Optional file containing contract IDs (one per line)
+        #[arg(long)]
+        file: Option<String>,
+        /// Optional operation value (required for tag/categorize)
+        #[arg(long)]
+        value: Option<String>,
+        /// Roll back already-applied operations when any item fails
+        #[arg(long)]
+        rollback_on_error: bool,
+        /// Output JSON summary
+        #[arg(long)]
+        json: bool,
     },
 
     /// Manage contract upgrades and rollbacks
@@ -902,13 +958,35 @@ pub enum CicdCommands {
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigSubcommands {
-    Get {
+    /// Get a user config value by key
+    #[command(name = "get")]
+    UserGet {
+        key: String,
+    },
+    /// Set a user config value by key
+    #[command(name = "set")]
+    UserSet {
+        key: String,
+        value: String,
+    },
+    /// List all persisted user config values
+    #[command(name = "list")]
+    UserList {},
+    /// Reset user config to defaults
+    #[command(name = "reset")]
+    UserReset {},
+
+    /// Get contract environment configuration
+    #[command(name = "contract-get")]
+    ContractGet {
         #[arg(long)]
         contract_id: String,
         #[arg(long)]
         environment: String,
     },
-    Set {
+    /// Set contract environment configuration
+    #[command(name = "contract-set")]
+    ContractSet {
         #[arg(long)]
         contract_id: String,
         #[arg(long)]
@@ -920,13 +998,17 @@ pub enum ConfigSubcommands {
         #[arg(long)]
         created_by: String,
     },
-    History {
+    /// Show contract config history
+    #[command(name = "contract-history")]
+    ContractHistory {
         #[arg(long)]
         contract_id: String,
         #[arg(long)]
         environment: String,
     },
-    Rollback {
+    /// Roll back contract config to a previous version
+    #[command(name = "contract-rollback")]
+    ContractRollback {
         #[arg(long)]
         contract_id: String,
         #[arg(long)]
@@ -1487,6 +1569,15 @@ pub enum UpgradeSubcommands {
 async fn main() -> Result<()> {
     let mut cli = Cli::parse();
 
+    if cli.check_updates {
+        let update_checks_enabled = user_config::load()
+            .map(|cfg| cfg.update_checks_enabled)
+            .unwrap_or(true);
+        if update_checks_enabled {
+            let _ = version::check_version(true, false, None).await;
+        }
+    }
+
     let cli_api_base = if cli.api_url.trim().is_empty() {
         None
     } else {
@@ -1692,8 +1783,30 @@ pub async fn dispatch_command(
         Commands::Compare { ids, json, export, format } => {
             compare::run(&cli.api_url, ids, json, export.as_deref(), format.as_deref()).await?;
         }
-        Commands::Version => {
-            version::check_version().await?;
+        Commands::Analytics {
+            query,
+            period,
+            format,
+            sort,
+            export,
+        } => {
+            let parsed_query = analytics::AnalyticsQuery::parse(&query)?;
+            analytics::run(
+                &cli.api_url,
+                parsed_query,
+                &period,
+                &format,
+                sort.as_deref(),
+                export.as_deref(),
+            )
+            .await?;
+        }
+        Commands::Version {
+            check_updates,
+            auto_update,
+            rollback,
+        } => {
+            version::check_version(check_updates, auto_update, rollback).await?;
         }
         Commands::Publish {
             contract_id,
@@ -1887,7 +2000,7 @@ pub async fn dispatch_command(
             log::debug!("Command: deploy");
             deploy::run_interactive().await?;
         }
-        Commands::Version { action } => match action {
+        Commands::VersionSemver { action } => match action {
             VersionCommands::List { contract_id } => {
                 log::debug!("Command: version list | contract_id={}", contract_id);
                 upgrade::version::list(&contract_id)?;
@@ -2187,13 +2300,34 @@ pub async fn dispatch_command(
             }
         },
         Commands::Config { action } => match action {
-            ConfigSubcommands::Get {
+            ConfigSubcommands::UserGet { key } => {
+                user_config::validate_key(&key)?;
+                let value = user_config::get_key(&key)?;
+                match value {
+                    Some(v) => println!("{}", v),
+                    None => anyhow::bail!("Key '{}' was not found in user config.", key),
+                }
+            }
+            ConfigSubcommands::UserSet { key, value } => {
+                user_config::set_key(&key, &value)?;
+                println!("Updated '{}' in user config.", key);
+            }
+            ConfigSubcommands::UserList {} => {
+                let cfg = user_config::list()?;
+                println!("{}", serde_json::to_string_pretty(&cfg)?);
+            }
+            ConfigSubcommands::UserReset {} => {
+                let cfg = user_config::reset_to_defaults()?;
+                println!("User config reset to defaults:");
+                println!("{}", serde_json::to_string_pretty(&cfg)?);
+            }
+            ConfigSubcommands::ContractGet {
                 contract_id,
                 environment,
             } => {
                 commands::config_get(&cli.api_url, &contract_id, &environment).await?;
             }
-            ConfigSubcommands::Set {
+            ConfigSubcommands::ContractSet {
                 contract_id,
                 environment,
                 config_data,
@@ -2210,13 +2344,13 @@ pub async fn dispatch_command(
                 )
                 .await?;
             }
-            ConfigSubcommands::History {
+            ConfigSubcommands::ContractHistory {
                 contract_id,
                 environment,
             } => {
                 commands::config_history(&cli.api_url, &contract_id, &environment).await?;
             }
-            ConfigSubcommands::Rollback {
+            ConfigSubcommands::ContractRollback {
                 contract_id,
                 environment,
                 version,
@@ -2650,6 +2784,26 @@ pub async fn dispatch_command(
                 &manifest,
                 publisher.as_deref(),
                 dry_run,
+                json,
+            )
+            .await?;
+        }
+        Commands::Batch {
+            operation,
+            contracts,
+            file,
+            value,
+            rollback_on_error,
+            json,
+        } => {
+            let op = batch_ops::BatchOperation::parse(&operation)?;
+            batch_ops::run(
+                &cli.api_url,
+                op,
+                contracts,
+                file.as_deref(),
+                value.as_deref(),
+                rollback_on_error,
                 json,
             )
             .await?;
