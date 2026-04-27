@@ -1,3 +1,4 @@
+use crate::net::RequestBuilderExt;
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::json;
@@ -104,11 +105,10 @@ pub async fn list_contracts(
 
     log::debug!("Fetching contracts from: {}", url);
 
-    let client = reqwest::Client::new();
+    let client = crate::net::client();
     let response = client
         .get(&url)
-        .send()
-        .await
+        .send_with_retry().await
         .context("Failed to fetch contracts from API")?;
 
     if !response.status().is_success() {

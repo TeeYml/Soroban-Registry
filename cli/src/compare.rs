@@ -1,3 +1,4 @@
+use crate::net::RequestBuilderExt;
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::Value;
@@ -16,11 +17,11 @@ pub async fn run(
     }
 
     let mut contracts = Vec::new();
-    let client = reqwest::Client::new();
+    let client = crate::net::client();
 
     for id in &ids {
         let url = format!("{}/api/contracts/{}", api_url.trim_end_matches('/'), id);
-        let response = client.get(&url).send().await?;
+        let response = client.get(&url).send_with_retry().await?;
 
         if !response.status().is_success() {
             if response.status() == reqwest::StatusCode::NOT_FOUND {

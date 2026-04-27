@@ -149,6 +149,7 @@ use crate::{
     contract_events::{ContractEventEnvelope, ContractEventVisibility},
     dependency,
     error::{ApiError, ApiResult},
+    models::ContractSourceResponse,
     onchain_verification::OnChainVerifier,
     state::AppState,
     type_safety::parser::parse_json_spec,
@@ -2832,19 +2833,6 @@ pub async fn revert_contract_version(
 pub struct UploadContractSourceRequest {
     pub source_base64: String,
     pub source_format: String,
-}
-
-#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
-pub struct ContractSourceResponse {
-    pub id: Uuid,
-    pub contract_version_id: Uuid,
-    pub source_format: String,
-    pub storage_backend: String,
-    pub storage_key: String,
-    pub source_hash: String,
-    pub source_size: i64,
-    pub source_base64: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, utoipa::IntoParams)]

@@ -1,3 +1,4 @@
+use crate::net::RequestBuilderExt;
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::{json, Value};
@@ -16,7 +17,7 @@ pub async fn run(
     path: &str,
     notes: Option<String>,
 ) -> Result<()> {
-    let client = reqwest::Client::new();
+    let client = crate::net::client();
 
     if submit {
         submit_verification(api_url, &client, id, &level, path, notes, json_output).await?;
@@ -85,7 +86,7 @@ async fn submit_verification(
     });
 
     let url = format!("{}/api/contracts/{}/verify", api_url.trim_end_matches('/'), contract_id);
-    let response = client.post(&url).json(&payload).send().await?;
+    let response = client.post(&url).json(&payload).send_with_retry().await?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -115,7 +116,7 @@ async fn check_status(
     json_output: bool,
 ) -> Result<()> {
     let url = format!("{}/api/contracts/{}/verification-status", api_url.trim_end_matches('/'), contract_id);
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url).send_with_retry().await?;
 
     if !response.status().is_success() {
         if response.status() == 404 {
@@ -170,7 +171,7 @@ async fn show_history(
     json_output: bool,
 ) -> Result<()> {
     let url = format!("{}/api/contracts/{}/verification-history?level={}", api_url.trim_end_matches('/'), contract_id, level);
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url).send_with_retry().await?;
 
     if !response.status().is_success() {
         anyhow::bail!("Failed to fetch history ({}): {}", response.status(), response.text().await.unwrap_or_default());
